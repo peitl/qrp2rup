@@ -392,6 +392,9 @@ bool ProofTranslator::translate() {
 				// create intermediate g-variables for every reduced merged variable
 				// also compute how falsifying later gvars propagates earlier gvars
 				vector<GRAT_ClauseID> gvar_downwards_propagation_sequence;
+				vector<GRAT_ClauseID> gvar_downwards_shortcut_sequence;
+				vector<GRAT_ClauseID> gvar_eflit_falsification_sequence;
+				vector<GRAT_ClauseID> gvar_definition_conflict_clause;
 
                 for (OldVar var : reduced_merged) {
                     NewVar last_aux = auxg.back();
@@ -399,7 +402,22 @@ bool ProofTranslator::translate() {
 					// define next_g = last_g | eflit(var, phase(id, var))
 					cert.define_variable_clause<NewLit>(auxg.back(), {last_aux, get_eflit(var, get_phase(current_id, var))});
 					gvar_downwards_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
-					gvar_downwards_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 1);
+					gvar_eflit_falsification_sequence.push_back(cert.num_clauses + num_cnf_clauses - 1);
+					gvar_definition_conflict_clause.push_back(cert.num_clauses + num_cnf_clauses);
+					if (gvar_downwards_propagation_sequence.size() > 1) {
+						// the downwards shortcut clause from -g_k to -g, k > 1
+						rup.write_clause<NewLit>({auxg.back(), -g});
+
+						grat_proof.push_back(3);
+						grat_proof.push_back(-rup.num_clauses);
+						grat_proof.push_back(gvar_downwards_propagation_sequence.back());
+						grat_proof.push_back(0);
+						grat_proof.push_back(gvar_downwards_shortcut_sequence.back());
+						
+						gvar_downwards_shortcut_sequence.push_back(-rup.num_clauses);
+					} else {
+						gvar_downwards_shortcut_sequence.push_back(gvar_downwards_propagation_sequence.back());
+					}
                 }
 
 				// TODO: collapse the gvar_downwards_propagation sequence, by iteratively shortening it by one
@@ -456,6 +474,7 @@ bool ProofTranslator::translate() {
 				// gvar = resolvent after reducing everything simple
                 NewVar gvar = auxg.back();
                 auxg.pop_back();
+				gvar_downwards_shortcut_sequence.pop_back();
 
                 if (!merged_lits.empty()) {
 					// here gvar is guaranteed to be non-zero, because there were merges, but
@@ -468,6 +487,7 @@ bool ProofTranslator::translate() {
 					// the id of the newly added rup clause
 					grat_proof.push_back(-rup.num_clauses);
 					grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+					grat_proof.insert(grat_proof.end(), gvar_eflit_falsification_sequence.rbegin(), gvar_eflit_falsification_sequence.rend());
 					grat_proof.insert(grat_proof.end(), g_def_propagation_sequence.begin(), g_def_propagation_sequence.end());
 					grat_proof.insert(grat_proof.end(), reduction_propagation_sequence.begin(), reduction_propagation_sequence.end());
 					grat_proof.insert(grat_proof.end(), merge_propagation_sequence_left.begin(), merge_propagation_sequence_left.end());
@@ -482,6 +502,7 @@ bool ProofTranslator::translate() {
 					grat_proof.push_back(-rup.num_clauses);
 					grat_proof.push_back(-(rup.num_clauses - 1));
 					grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+					grat_proof.insert(grat_proof.end(), gvar_eflit_falsification_sequence.rbegin(), gvar_eflit_falsification_sequence.rend());
 					grat_proof.insert(grat_proof.end(), g_def_propagation_sequence.begin(), g_def_propagation_sequence.end());
 					grat_proof.insert(grat_proof.end(), reduction_propagation_sequence.begin(), reduction_propagation_sequence.end());
 					grat_proof.insert(grat_proof.end(), merge_propagation_sequence_right.begin(), merge_propagation_sequence_right.end());
@@ -500,6 +521,7 @@ bool ProofTranslator::translate() {
 					grat_proof.push_back(3);
 					grat_proof.push_back(-rup.num_clauses);
 					grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+					grat_proof.insert(grat_proof.end(), gvar_eflit_falsification_sequence.rbegin(), gvar_eflit_falsification_sequence.rend());
 					grat_proof.insert(grat_proof.end(), g_def_propagation_sequence.begin(), g_def_propagation_sequence.end());
 					grat_proof.insert(grat_proof.end(), reduction_propagation_sequence.begin(), reduction_propagation_sequence.end());
 
@@ -520,16 +542,15 @@ bool ProofTranslator::translate() {
 					grat_proof.push_back(0);
 				}
 
+				gvar_downwards_propagation_sequence.clear();
+				gvar_eflit_falsification_sequence.clear();
+
                 // handle the part with reduced merged literals
                 for (vector<OldVar>::reverse_iterator rit = reduced_merged.rbegin(); rit != reduced_merged.rend(); rit++) {
                     OldVar var = *rit;
                     NewVar var_phase = get_phase(current_id, var);
                     gvar = auxg.back();
                     auxg.pop_back();
-
-					GRAT_ClauseID conflict_one_level_higher = gvar_downwards_propagation_sequence.back() + 1;
-					gvar_downwards_propagation_sequence.pop_back();
-					gvar_downwards_propagation_sequence.pop_back();
 
                     NewVar out_var = var;
                     auto found = countermodel_out_var.find(var);
@@ -556,7 +577,10 @@ bool ProofTranslator::translate() {
 
 					grat_proof.push_back(3);
 					grat_proof.push_back(-rup.num_clauses);
-					grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+					//grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+					if (!gvar_downwards_shortcut_sequence.empty()) {
+						grat_proof.push_back(gvar_downwards_shortcut_sequence.back()); // g := false
+					}
 					grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 9); // f1 := false
 					grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 5); // out_var := false
 					if (prop_clause != prop.end()) {
@@ -564,14 +588,18 @@ bool ProofTranslator::translate() {
 					}
 					grat_proof.push_back(eflit_def[get_eflit(var, var_phase)] + 1);
 					grat_proof.push_back(0);
-					grat_proof.push_back(conflict_one_level_higher);
+					grat_proof.push_back(gvar_definition_conflict_clause.back());
 
 					rup.write_clause<NewLit>({gvar});
 
 					grat_proof.push_back(3);
 					grat_proof.push_back(-rup.num_clauses);
 					grat_proof.push_back(-(rup.num_clauses - 1));
-					grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+					//grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+					if (!gvar_downwards_shortcut_sequence.empty()) {
+						grat_proof.push_back(gvar_downwards_shortcut_sequence.back()); // g := false
+						gvar_downwards_shortcut_sequence.pop_back();
+					}
 					grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 6);  // f2 := false
 					grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 2);  // new_out1 := true
 					grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 10); // f1 := true
@@ -581,13 +609,15 @@ bool ProofTranslator::translate() {
 					}
 					grat_proof.push_back(eflit_def[get_eflit(var, var_phase)] + 0);
 					grat_proof.push_back(0);
-					grat_proof.push_back(conflict_one_level_higher);
+					grat_proof.push_back(gvar_definition_conflict_clause.back());
 
 					grat_proof.push_back(1);
 					grat_proof.push_back(-rup.num_clauses);
 					grat_proof.push_back(0);
 
 					countermodel_out_var[var] = new_out2;
+					
+					gvar_definition_conflict_clause.pop_back();
                 }
                 
                 /* add the clauses that short-circuit the RFAO array to the last partial circuit
@@ -647,17 +677,15 @@ bool ProofTranslator::translate() {
 
                 running_grat_id = cert.num_clauses + num_cnf_clauses - 12*reduced_merged.size();
 
+				// update prop clauses for reduced merged literals
                 for (vector<OldVar>::reverse_iterator rit = reduced_merged.rbegin(); rit != reduced_merged.rend(); rit++) {
                     OldVar var = *rit;
-					// TODO: update prop clauses: correctly identify f1, f2 literals as unit, ...
                     auto prop_clause = prop.find(var);
 
 					NewVar out_var = countermodel_out_var[var];
 
 					grat_proof.push_back(1);
 					grat_proof.push_back(running_grat_id + 1);
-					grat_proof.push_back(0);
-					grat_proof.push_back(1);
 					grat_proof.push_back(running_grat_id + 4);
 					grat_proof.push_back(0);
 
