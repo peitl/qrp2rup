@@ -352,7 +352,6 @@ inline QRP_ClauseID ProofTranslator::parse_DAG_structure_QRP(std::ifstream& qrp,
 
         QRP_ClauseID parent = 0;
         while ((parent = strtoul(tmp_line, &tmp_line, 10)) != 0) {
-			std::cout << parent << " ";
             parents_of[id].push_back(parent);
         }
     }
