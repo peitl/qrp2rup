@@ -76,6 +76,8 @@ public:
 	uint64_t num_merges;
 	size_t last_orig_clause_seen;
 	vector<vector<OldLit>> matrix;
+	vector<bool> tautological;
+	vector<OldVar> clause_tseitin_variables = {};
 
     /* *** GRAT stuff ***
 	 *
