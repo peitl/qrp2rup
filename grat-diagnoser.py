@@ -113,7 +113,10 @@ def diagnose(rup, grat):
                 grat_head += 1
             if not bug:
                 grat_head += 1
-                if not is_empty(grat[grat_head]):
+                if grat[grat_head] == 0:
+                    print("Conflict clause for lemma %d is 0, should be a positive id" % current_id)
+                    bug = True
+                elif not is_empty(grat[grat_head]):
                     print("Invalid conflict for candidate RUP clause %d" % current_id)
                     bug = True
                 else:
@@ -122,16 +125,23 @@ def diagnose(rup, grat):
                     next_rup_clause += 1
         elif grat[grat_head] == 5:
             grat_head += 1
-            if not is_empty(grat[grat_head]):
+            if grat[grat_head] == 0:
+                print("Final conflict clause is 0, should be a positive id")
+                bug = True
+            elif not is_empty(grat[grat_head]):
                 print("Claimed conflict is not a conflict")
+                bug = True
         grat_head += 1
     if not bug:
         print("OK")
     else:
         print("Proof check failed")
-        print("Permanent assignment: " + " ".join(map(str, permanent_assignment)))
-        print("Temporary assignment: " + " ".join(map(str, temporary_assignment)))
-        print("Culprit: " + " ".join(map(str, clauses[culprit])))
+        if culprit != 0:
+            print("Permanent assignment: " + " ".join(map(str, permanent_assignment)))
+            print("Temporary assignment: " + " ".join(map(str, temporary_assignment)))
+            print("Culprit: " + " ".join(map(str, clauses[culprit])))
+        else:
+            print("Syntax error detected")
 
 
 def main(cnf_filename, rup_filename, grat_filename):
