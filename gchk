@@ -1,0 +1,3 @@
+#!/bin/bash
+
+gratchk unsat $1.qrp.cnf $1.qrp.rup $1.qrp.grat
