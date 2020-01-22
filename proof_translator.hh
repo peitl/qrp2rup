@@ -306,24 +306,32 @@ inline QRP_ClauseID ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp
 		unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of) {
 
 	string line;
-	QRP_ClauseID id;
+	QRP_ClauseID empty_constraint_id = 0;
 	int empty_constraint_type;
 	while (std::getline(qrp, line)) {
 
 		char * tmp_line;
 
-		id = strtoul(line.c_str(), &tmp_line, 10);
+		QRP_ClauseID id = strtoul(line.c_str(), &tmp_line, 10);
 		parents_of[id] = {};
 
 		// skip Qute clause/term flag
-		empty_constraint_type = strtoul(tmp_line, &tmp_line, 10);
+		int constraint_type = strtol(tmp_line, &tmp_line, 10);
 
-		tmp_line = strstr(tmp_line, " 0 ");
-		if (tmp_line == NULL) {
-			std::cerr << "Syntax error in step with the id " << id << std::endl;
-			return 0;
+		long int first_literal_in_constraint = strtol(tmp_line, &tmp_line, 10);
+		if (first_literal_in_constraint == 0) {
+			// empty clause
+			empty_constraint_id = id;
+			empty_constraint_type = constraint_type;
+			break;
+		} else {
+			tmp_line = strstr(tmp_line, " 0 ");
+			if (tmp_line == NULL) {
+				std::cerr << "Syntax error in step with the id " << id << std::endl;
+				return 0;
+			}
+			tmp_line += 3;
 		}
-		tmp_line += 3;
 
 		QRP_ClauseID parent = 0;
 		while ((parent = strtoul(tmp_line, &tmp_line, 10)) != 0) {
@@ -333,27 +341,33 @@ inline QRP_ClauseID ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp
 
 	primary_type = (empty_constraint_type == 0);
 
-	return id;
+	return empty_constraint_id;
 }
 
 inline QRP_ClauseID ProofTranslator::parse_DAG_structure_QRP(std::ifstream& qrp,
 		unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of) {
 
 	string line;
-	QRP_ClauseID id;
+	QRP_ClauseID empty_constraint_id = 0;
 	while (std::tolower(qrp.peek()) != 'r') {
 		std::getline(qrp, line);
 		char * tmp_line;
 
-		id = strtoul(line.c_str(), &tmp_line, 10);
+		QRP_ClauseID id = strtoul(line.c_str(), &tmp_line, 10);
 		parents_of[id] = {};
 
-		tmp_line = strstr(tmp_line, " 0 ");
-		if (tmp_line == NULL) {
-			std::cerr << "Syntax error in step with the id " << id << std::endl;
-			return 0;
+		long int first_literal_in_constraint = strtol(tmp_line, &tmp_line, 10);
+		if (first_literal_in_constraint == 0) {
+			// empty clause
+			empty_constraint_id = id;
+		} else {
+			tmp_line = strstr(tmp_line, " 0 ");
+			if (tmp_line == NULL) {
+				std::cerr << "Syntax error in step with the id " << id << std::endl;
+				return 0;
+			}
+			tmp_line += 3;
 		}
-		tmp_line += 3;
 
 		QRP_ClauseID parent = 0;
 		while ((parent = strtoul(tmp_line, &tmp_line, 10)) != 0) {
@@ -361,7 +375,7 @@ inline QRP_ClauseID ProofTranslator::parse_DAG_structure_QRP(std::ifstream& qrp,
 		}
 	}
 
-	return id;
+	return empty_constraint_id;
 }
 
 inline bool ProofTranslator::is_SAT_proof(string& result_line) {

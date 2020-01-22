@@ -48,6 +48,7 @@ bool ProofTranslator::translate() {
 		if (is_SAT_proof(result_line))
 			primary_type = 0;
 	} else {
+		// this version also sets primary_type
 		empty_constraint_id = parse_DAG_structure_Qute(qrp, parents_of);
 	}
 
@@ -944,10 +945,12 @@ bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {
 		 *
 		 *	 we assume the clauses come in the same order in the QRP as in the QDIMACS
 		 */
-		
+
 		while (last_orig_clause_seen < matrix.size() && !setequal(clause_database[current_id], matrix[last_orig_clause_seen])) {
 			++last_orig_clause_seen;
 		}
+		// because clauses in the proof are 1-indexed, not 0-indexed like in the variable matrix;
+		// additionally we advance the variable last_orig_clause_seen for the following search
 		++last_orig_clause_seen;
 
 		if (last_orig_clause_seen > matrix.size()) {
