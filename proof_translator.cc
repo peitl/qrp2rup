@@ -293,603 +293,603 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 											QRP_ClauseID parent_right,
 											QRP_ClauseID resolvent) {
 
-vector<OldLit> merged_lits;
-vector<OldLit> reduced_lits;
-vector<OldLit> reduced_simple;
-vector<OldVar> reduced_merged;
-vector<NewVar> auxg; // holds intermediate g-variables for merged reduction steps
-merged_vars_in[resolvent] = {};
+	vector<OldLit> merged_lits;
+	vector<OldLit> reduced_lits;
+	vector<OldLit> reduced_simple;
+	vector<OldVar> reduced_merged;
+	vector<NewVar> auxg; // holds intermediate g-variables for merged reduction steps
+	merged_vars_in[resolvent] = {};
 
-OldLit pivot = 0;
-if (parent_right != 0) {
-	// resolvent
-	pivot = check_resolution(clause_database[parent_left],
-							 clause_database[parent_right],
-							 clause_database[resolvent], merged_lits, reduced_lits);
-	if (pivot == 0) {
-		std::cerr << "Failed resolution step with id " << resolvent << std::endl;
-		return -1;
-	}
-	// first update phases, then handle reductions
-	// merged_lits contains a single literal for every merged variables,
-	// namely one that appears in parent_left
-	for (size_t i = 0; i < merged_lits.size(); ++i) {
-		OldLit lit = merged_lits[i];
-		OldVar var = abs(lit);
-		merged_vars_in[resolvent].push_back(var);
-
-		NewVar phase_left = get_phase(parent_left, lit);
-		NewVar phase_right = get_phase(parent_right, -lit);
-
-		PivotPhasesTuple cache_key = {pivot, phase_left, phase_right};
-
-		NewVar var_phase;
-		unordered_map<PivotPhasesTuple, NewVar>::iterator ppit = phase_cache.find(cache_key);
-		if (phase_left == phase_right) {
-			// var is in fact not being merged: remove it from merged_lits
-			var_phase = phase_left;						
-			merged_lits[i] = merged_lits.back();
-			merged_lits.pop_back();
-			--i;
-		} else if (ppit != phase_cache.end()) {
-			var_phase = ppit->second;
-		} else {
-			var_phase = update_phase(pivot, phase_left, phase_right);
+	OldLit pivot = 0;
+	if (parent_right != 0) {
+		// resolvent
+		pivot = check_resolution(clause_database[parent_left],
+								 clause_database[parent_right],
+								 clause_database[resolvent], merged_lits, reduced_lits);
+		if (pivot == 0) {
+			std::cerr << "Failed resolution step with id " << resolvent << std::endl;
+			return -1;
 		}
-		phase.insert({{resolvent, var}, var_phase});
-		if (verbose_output)
-			std::cerr << "Phase of " << var << " in " << resolvent << " is " << var_phase << std::endl;
+		// first update phases, then handle reductions
+		// merged_lits contains a single literal for every merged variables,
+		// namely one that appears in parent_left
+		for (size_t i = 0; i < merged_lits.size(); ++i) {
+			OldLit lit = merged_lits[i];
+			OldVar var = abs(lit);
+			merged_vars_in[resolvent].push_back(var);
 
-		NewVar var_eflit;
-		unordered_map<VarPhasePair, NewVar>::iterator vpit = eflit.find({var, var_phase});
-		if (vpit != eflit.end()) {
-			var_eflit = vpit->second;
-		} else {
-			var_eflit = make_eflit(var, var_phase);
-			eflit.insert({{var, var_phase}, var_eflit});
-			// print E-clauses because effective literal was updated
-			NewVar eflit_left = get_eflit(lit, phase_left);
-			NewVar eflit_right = get_eflit(-lit, phase_right);
+			NewVar phase_left = get_phase(parent_left, lit);
+			NewVar phase_right = get_phase(parent_right, -lit);
 
-			// ##############################################################
-			// shortcuts to falsify left parent
-			// ##############################################################
-			// the sequence of propagations is:
-			//	 pivot^0		+  phase_left^f				 =>  var_phase^f  [ phase_def[var_phase]   ]
-			//	 eflit_left^1	+  phase_left^f				 =>  var^f		  [ eflit_def[eflit_left]  ] (only if phase_left is non-trivial)
-			//	 var_eflit^0	+  var_phase^f	  + var^f	 =>  0			  [ eflit_def[var_eflit]   ]
-			//
-			//	 pivot^1		+  phase_right^f			 =>  var_phase^f  [ phase_def[var_phase]   ]
-			//	 eflit_right^1	+  phase_right^f			 =>  var^f		  [ eflit_def[eflit_right] ] (only if phase_right is non-trivial)
-			//	 var_eflit^0	+  var_phase^f	  + var^f	 =>  0			  [ eflit_def[var_eflit]   ]
-			// ##############################################################
-			
-			// TODO: rewrite sequences such as this one into vector.insert(end, initializer_list)
-			
-			// if phase_left (phase_right) is non-trivial, we need to make a RUP-style case distinction
-			if (phase_left != CONST_TRUE) {
-				rup.write_clause<NewLit>({var_eflit, pivot, -eflit_left, phase_left});
-				grat_proof.push_back(3);
-				grat_proof.push_back(-rup.num_clauses);
-				//grat_proof.push_back(phase_def[var_phase] + neg_phase_offset);
-				grat_proof.push_back(phase_def[{pivot, var_phase}] + 1);
+			PivotPhasesTuple cache_key = {pivot, phase_left, phase_right};
+
+			NewVar var_phase;
+			unordered_map<PivotPhasesTuple, NewVar>::iterator ppit = phase_cache.find(cache_key);
+			if (phase_left == phase_right) {
+				// var is in fact not being merged: remove it from merged_lits
+				var_phase = phase_left;						
+				merged_lits[i] = merged_lits.back();
+				merged_lits.pop_back();
+				--i;
+			} else if (ppit != phase_cache.end()) {
+				var_phase = ppit->second;
+			} else {
+				var_phase = update_phase(pivot, phase_left, phase_right);
+			}
+			phase.insert({{resolvent, var}, var_phase});
+			if (verbose_output)
+				std::cerr << "Phase of " << var << " in " << resolvent << " is " << var_phase << std::endl;
+
+			NewVar var_eflit;
+			unordered_map<VarPhasePair, NewVar>::iterator vpit = eflit.find({var, var_phase});
+			if (vpit != eflit.end()) {
+				var_eflit = vpit->second;
+			} else {
+				var_eflit = make_eflit(var, var_phase);
+				eflit.insert({{var, var_phase}, var_eflit});
+				// print E-clauses because effective literal was updated
+				NewVar eflit_left = get_eflit(lit, phase_left);
+				NewVar eflit_right = get_eflit(-lit, phase_right);
+
+				// ##############################################################
+				// shortcuts to falsify left parent
+				// ##############################################################
+				// the sequence of propagations is:
+				//	 pivot^0		+  phase_left^f				 =>  var_phase^f  [ phase_def[var_phase]   ]
+				//	 eflit_left^1	+  phase_left^f				 =>  var^f		  [ eflit_def[eflit_left]  ] (only if phase_left is non-trivial)
+				//	 var_eflit^0	+  var_phase^f	  + var^f	 =>  0			  [ eflit_def[var_eflit]   ]
+				//
+				//	 pivot^1		+  phase_right^f			 =>  var_phase^f  [ phase_def[var_phase]   ]
+				//	 eflit_right^1	+  phase_right^f			 =>  var^f		  [ eflit_def[eflit_right] ] (only if phase_right is non-trivial)
+				//	 var_eflit^0	+  var_phase^f	  + var^f	 =>  0			  [ eflit_def[var_eflit]   ]
+				// ##############################################################
+				
+				// TODO: rewrite sequences such as this one into vector.insert(end, initializer_list)
+				
+				// if phase_left (phase_right) is non-trivial, we need to make a RUP-style case distinction
+				if (phase_left != CONST_TRUE) {
+					rup.write_clause<NewLit>({var_eflit, pivot, -eflit_left, phase_left});
+					grat_proof.push_back(3);
+					grat_proof.push_back(-rup.num_clauses);
+					//grat_proof.push_back(phase_def[var_phase] + neg_phase_offset);
+					grat_proof.push_back(phase_def[{pivot, var_phase}] + 1);
+					if (phase_left != CONST_FALSE) {
+						grat_proof.push_back(eflit_def[eflit_left] + 0);
+					}
+					grat_proof.push_back(0);
+					grat_proof.push_back(eflit_def[var_eflit] + 2);
+				}
+
 				if (phase_left != CONST_FALSE) {
-					grat_proof.push_back(eflit_def[eflit_left] + 0);
-				}
-				grat_proof.push_back(0);
-				grat_proof.push_back(eflit_def[var_eflit] + 2);
-			}
+					rup.write_clause<NewLit>({var_eflit, pivot, -eflit_left});
+					grat_proof.push_back(3);
+					grat_proof.push_back(-rup.num_clauses);
+					if (phase_left != CONST_TRUE) {
+						grat_proof.push_back(-(rup.num_clauses - 1));
+					}
+					grat_proof.push_back(phase_def[{pivot, var_phase}] + 0);
+					if (phase_left != CONST_TRUE) {
+						grat_proof.push_back(eflit_def[eflit_left] + 1);
+					}
+					grat_proof.push_back(0);
+					grat_proof.push_back(eflit_def[var_eflit] + 3);
+				}					
 
-			if (phase_left != CONST_FALSE) {
-				rup.write_clause<NewLit>({var_eflit, pivot, -eflit_left});
-				grat_proof.push_back(3);
-				grat_proof.push_back(-rup.num_clauses);
-				if (phase_left != CONST_TRUE) {
-					grat_proof.push_back(-(rup.num_clauses - 1));
-				}
-				grat_proof.push_back(phase_def[{pivot, var_phase}] + 0);
-				if (phase_left != CONST_TRUE) {
-					grat_proof.push_back(eflit_def[eflit_left] + 1);
-				}
-				grat_proof.push_back(0);
-				grat_proof.push_back(eflit_def[var_eflit] + 3);
-			}					
+				eflit_shortcut[{pivot, var_eflit}] = rup.num_clauses;
 
-			eflit_shortcut[{pivot, var_eflit}] = rup.num_clauses;
+				// shortcuts to falsify right parent
+				if (phase_right != CONST_TRUE) {
+					rup.write_clause<NewLit>({var_eflit, -pivot, -eflit_right, phase_right});
+					grat_proof.push_back(3);
+					grat_proof.push_back(-rup.num_clauses);
+					grat_proof.push_back(phase_def[{-pivot, var_phase}] + 1);
+					if (phase_right != CONST_FALSE) {
+						grat_proof.push_back(eflit_def[eflit_right] + 0);
+					}
+					grat_proof.push_back(0);
+					grat_proof.push_back(eflit_def[var_eflit] + 2);
+				}
 
-			// shortcuts to falsify right parent
-			if (phase_right != CONST_TRUE) {
-				rup.write_clause<NewLit>({var_eflit, -pivot, -eflit_right, phase_right});
-				grat_proof.push_back(3);
-				grat_proof.push_back(-rup.num_clauses);
-				grat_proof.push_back(phase_def[{-pivot, var_phase}] + 1);
 				if (phase_right != CONST_FALSE) {
-					grat_proof.push_back(eflit_def[eflit_right] + 0);
+					rup.write_clause<NewLit>({var_eflit, -pivot, -eflit_right});
+					grat_proof.push_back(3);
+					grat_proof.push_back(-rup.num_clauses);
+					if (phase_right != CONST_TRUE) {
+						grat_proof.push_back(-(rup.num_clauses - 1));
+					}
+					grat_proof.push_back(phase_def[{-pivot, var_phase}] + 0);
+					if (phase_right != CONST_TRUE) {
+						grat_proof.push_back(eflit_def[eflit_right] + 1);
+					}
+					grat_proof.push_back(0);
+					grat_proof.push_back(eflit_def[var_eflit] + 3);
 				}
-				grat_proof.push_back(0);
-				grat_proof.push_back(eflit_def[var_eflit] + 2);
-			}
 
-			if (phase_right != CONST_FALSE) {
-				rup.write_clause<NewLit>({var_eflit, -pivot, -eflit_right});
+				eflit_shortcut[{-pivot, var_eflit}] = rup.num_clauses;
+			}
+			if (verbose_output)
+				std::cerr << "Eflit of " << var << " in " << resolvent << " is " << var_eflit << std::endl;
+		}
+		// carry over phases of already merged literals that are not being merged now
+		copy_phases(parent_left, resolvent);
+		copy_phases(parent_right, resolvent);
+	} else {
+		check_reduction(clause_database[parent_left], clause_database[resolvent], reduced_lits);
+		copy_phases(parent_left, resolvent);
+	}
+
+	split_reduction_step(resolvent, reduced_lits, reduced_simple, reduced_merged);
+	// TODO: avoid the computation of the shadow clause if not necessary
+	vector<NewVar> shadcls = shadow(resolvent);
+
+	// compute the propagation sequence for newly merged literals
+	// the "left" ("right") sequence is what propagates when the left (right) pivot and the new merged literals are falsified
+	vector<GRAT_ClauseID> merge_propagation_sequence_left;
+	vector<GRAT_ClauseID> merge_propagation_sequence_right;
+	for (NewLit merged_lit : merged_lits) {
+		NewVar merged_eflit = get_eflit(merged_lit, get_phase(resolvent, merged_lit));
+		merge_propagation_sequence_left.push_back(-eflit_shortcut[{pivot, merged_eflit}]);
+		merge_propagation_sequence_right.push_back(-eflit_shortcut[{-pivot, merged_eflit}]);
+	}
+
+	if (!merged_lits.empty()) {
+		++num_merges;
+	}
+
+	/* if there are any reduced literals, create the corresponding g_i variables
+	 * and update the countermodel circuits, else just print the shadow clause. */
+	if (!reduced_lits.empty()) {
+
+		// initialize all g-variables
+		int64_t g = get_fresh_variable();
+		cert.define_variable_clause(g, shadcls);
+
+		// the current clause is at the end of the certificate at the moment
+		GRAT_ClauseID current_grat_id = cert.num_clauses + num_cnf_clauses;
+		get_grat_id[resolvent] = current_grat_id;
+
+		if (shadcls.empty()) {
+			conflict_clause = current_grat_id;
+		}
+
+		// avoid creation of new variable when shadow clause is unit or empty, but that complicates things
+		/*if (shadcls.size() > 0) {
+			if (shadcls.size() > 1) {
+				g = get_fresh_variable();
+				num_cert_clauses += define_variable_clause(cnf, g, shadcls);
+			} else {
+				has_unit_conclusion = true;
+				g = shadcls[0];
+			}
+		} else {
+			has_empty_conclusion = true;
+		}*/
+
+		auxg.push_back(g);
+
+		// create intermediate g-variables for every reduced merged variable
+		// also compute how falsifying later gvars propagates earlier gvars
+		vector<GRAT_ClauseID> gvar_downwards_propagation_sequence;
+		vector<GRAT_ClauseID> gvar_downwards_shortcut_sequence;
+		vector<GRAT_ClauseID> gvar_eflit_falsification_sequence;
+		vector<GRAT_ClauseID> gvar_definition_conflict_clause;
+
+		for (OldVar var : reduced_merged) {
+			NewVar last_aux = auxg.back();
+			auxg.push_back(get_fresh_variable());
+			// define next_g = last_g | eflit(var, phase(id, var))
+			cert.define_variable_clause<NewLit>(auxg.back(), {last_aux, get_eflit(var, get_phase(resolvent, var))});
+			gvar_downwards_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
+			gvar_eflit_falsification_sequence.push_back(cert.num_clauses + num_cnf_clauses - 1);
+			gvar_definition_conflict_clause.push_back(cert.num_clauses + num_cnf_clauses);
+			if (gvar_downwards_propagation_sequence.size() > 1) {
+				// the downwards shortcut clause from -g_k to -g, k > 1
+				rup.write_clause<NewLit>({auxg.back(), -g});
+
 				grat_proof.push_back(3);
 				grat_proof.push_back(-rup.num_clauses);
-				if (phase_right != CONST_TRUE) {
-					grat_proof.push_back(-(rup.num_clauses - 1));
-				}
-				grat_proof.push_back(phase_def[{-pivot, var_phase}] + 0);
-				if (phase_right != CONST_TRUE) {
-					grat_proof.push_back(eflit_def[eflit_right] + 1);
-				}
+				grat_proof.push_back(gvar_downwards_propagation_sequence.back());
 				grat_proof.push_back(0);
-				grat_proof.push_back(eflit_def[var_eflit] + 3);
+				grat_proof.push_back(gvar_downwards_shortcut_sequence.back());
+				
+				gvar_downwards_shortcut_sequence.push_back(-rup.num_clauses);
+			} else {
+				gvar_downwards_shortcut_sequence.push_back(gvar_downwards_propagation_sequence.back());
+			}
+		}
+
+		// setting (-g) propagates the negation of the current clause via the 2-clauses
+		vector<GRAT_ClauseID> g_def_propagation_sequence;
+
+		for (GRAT_ClauseID g_binclause_id = current_grat_id - shadcls.size(); g_binclause_id < current_grat_id; ++g_binclause_id) {
+			g_def_propagation_sequence.push_back(g_binclause_id);
+		}
+
+		// handle the simple part of the reduction step
+		// compute the countermodel and the propagation sequence
+		vector<GRAT_ClauseID> reduction_propagation_sequence;
+
+		for (OldLit lit : reduced_simple) {
+
+			++num_reductions;
+			OldVar var = abs(lit);
+
+			/* out_var is the variable representing the yet unknown partial
+			 * countermodel circuit for var (by default var)
+			 *
+			 * since all the previous (g) unit clauses are in the proof,
+			 * the value of var is equivalent to out_var via the prop clauses */ 
+			NewVar out_var = var;
+			auto found = countermodel_out_var.find(var);
+			if (found != countermodel_out_var.end()){
+				out_var = found->second;
 			}
 
-			eflit_shortcut[{-pivot, var_eflit}] = rup.num_clauses;
-		}
-		if (verbose_output)
-			std::cerr << "Eflit of " << var << " in " << resolvent << " is " << var_eflit << std::endl;
-	}
-	// carry over phases of already merged literals that are not being merged now
-	copy_phases(parent_left, resolvent);
-	copy_phases(parent_right, resolvent);
-} else {
-	check_reduction(clause_database[parent_left], clause_database[resolvent], reduced_lits);
-	copy_phases(parent_left, resolvent);
-}
+			/* new_out will be the new out_var, representing the smaller
+			 * unknown circuit */
+			int64_t new_out = get_fresh_variable();
 
-split_reduction_step(resolvent, reduced_lits, reduced_simple, reduced_merged);
-// TODO: avoid the computation of the shadow clause if not necessary
-vector<NewVar> shadcls = shadow(resolvent);
+			if (lit < 0) {
+				cert.define_variable_clause<NewLit>(out_var, {-g, new_out});
+				reduction_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
+				auto prop_clause = prop.find(var);
+				if (prop_clause != prop.end()) {
+					reduction_propagation_sequence.push_back(prop_clause->second[0]);
+				}
+			} else {
+				cert.define_variable_term<NewLit>(out_var, {g, new_out});
+				reduction_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
+				auto prop_clause = prop.find(var);
+				if (prop_clause != prop.end()) {
+					reduction_propagation_sequence.push_back(prop_clause->second[1]);
+				}
+			}
+			countermodel_out_var[var] = new_out;
+		} 
 
-// compute the propagation sequence for newly merged literals
-// the "left" ("right") sequence is what propagates when the left (right) pivot and the new merged literals are falsified
-vector<GRAT_ClauseID> merge_propagation_sequence_left;
-vector<GRAT_ClauseID> merge_propagation_sequence_right;
-for (NewLit merged_lit : merged_lits) {
-	NewVar merged_eflit = get_eflit(merged_lit, get_phase(resolvent, merged_lit));
-	merge_propagation_sequence_left.push_back(-eflit_shortcut[{pivot, merged_eflit}]);
-	merge_propagation_sequence_right.push_back(-eflit_shortcut[{-pivot, merged_eflit}]);
-}
+		// gvar = resolvent after reducing everything simple
+		NewVar gvar = auxg.back();
+		auxg.pop_back();
+		gvar_downwards_shortcut_sequence.pop_back();
 
-if (!merged_lits.empty()) {
-	++num_merges;
-}
+		if (!merged_lits.empty()) {
+			// here gvar is guaranteed to be non-zero, because there were merges, but
+			// we have not reduced them yet (gvar = clause after reducing simple literals)
 
-/* if there are any reduced literals, create the corresponding g_i variables
- * and update the countermodel circuits, else just print the shadow clause. */
-if (!reduced_lits.empty()) {
+			rup.write_clause<NewLit>({pivot, gvar});
 
-	// initialize all g-variables
-	int64_t g = get_fresh_variable();
-	cert.define_variable_clause(g, shadcls);
+			// begin propagation sequence for a rup clause
+			grat_proof.push_back(3);
+			// the id of the newly added rup clause
+			grat_proof.push_back(-rup.num_clauses);
+			grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+			grat_proof.insert(grat_proof.end(), gvar_eflit_falsification_sequence.rbegin(), gvar_eflit_falsification_sequence.rend());
+			grat_proof.insert(grat_proof.end(), g_def_propagation_sequence.begin(), g_def_propagation_sequence.end());
+			grat_proof.insert(grat_proof.end(), reduction_propagation_sequence.begin(), reduction_propagation_sequence.end());
+			grat_proof.insert(grat_proof.end(), merge_propagation_sequence_left.begin(), merge_propagation_sequence_left.end());
+			grat_proof.push_back(0);
+			grat_proof.push_back(get_grat_id[parent_left]);
 
-	// the current clause is at the end of the certificate at the moment
-	GRAT_ClauseID current_grat_id = cert.num_clauses + num_cnf_clauses;
-	get_grat_id[resolvent] = current_grat_id;
+			rup.write_clause<NewLit>({gvar});
 
-	if (shadcls.empty()) {
-		conflict_clause = current_grat_id;
-	}
+			// begin propagation sequence for a rup clause
+			grat_proof.push_back(3);
+			// the id of the newly added rup clause
+			grat_proof.push_back(-rup.num_clauses);
+			grat_proof.push_back(-(rup.num_clauses - 1));
+			grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+			grat_proof.insert(grat_proof.end(), gvar_eflit_falsification_sequence.rbegin(), gvar_eflit_falsification_sequence.rend());
+			grat_proof.insert(grat_proof.end(), g_def_propagation_sequence.begin(), g_def_propagation_sequence.end());
+			grat_proof.insert(grat_proof.end(), reduction_propagation_sequence.begin(), reduction_propagation_sequence.end());
+			grat_proof.insert(grat_proof.end(), merge_propagation_sequence_right.begin(), merge_propagation_sequence_right.end());
+			grat_proof.push_back(0);
+			grat_proof.push_back(get_grat_id[parent_right]);
 
-	// avoid creation of new variable when shadow clause is unit or empty, but that complicates things
-	/*if (shadcls.size() > 0) {
-		if (shadcls.size() > 1) {
-			g = get_fresh_variable();
-			num_cert_clauses += define_variable_clause(cnf, g, shadcls);
+			// mark the newly added clause as unit
+			grat_proof.push_back(1);
+			grat_proof.push_back(-rup.num_clauses);
+			grat_proof.push_back(0);
+
 		} else {
-			has_unit_conclusion = true;
-			g = shadcls[0];
-		}
-	} else {
-		has_empty_conclusion = true;
-	}*/
-
-	auxg.push_back(g);
-
-	// create intermediate g-variables for every reduced merged variable
-	// also compute how falsifying later gvars propagates earlier gvars
-	vector<GRAT_ClauseID> gvar_downwards_propagation_sequence;
-	vector<GRAT_ClauseID> gvar_downwards_shortcut_sequence;
-	vector<GRAT_ClauseID> gvar_eflit_falsification_sequence;
-	vector<GRAT_ClauseID> gvar_definition_conflict_clause;
-
-	for (OldVar var : reduced_merged) {
-		NewVar last_aux = auxg.back();
-		auxg.push_back(get_fresh_variable());
-		// define next_g = last_g | eflit(var, phase(id, var))
-		cert.define_variable_clause<NewLit>(auxg.back(), {last_aux, get_eflit(var, get_phase(resolvent, var))});
-		gvar_downwards_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
-		gvar_eflit_falsification_sequence.push_back(cert.num_clauses + num_cnf_clauses - 1);
-		gvar_definition_conflict_clause.push_back(cert.num_clauses + num_cnf_clauses);
-		if (gvar_downwards_propagation_sequence.size() > 1) {
-			// the downwards shortcut clause from -g_k to -g, k > 1
-			rup.write_clause<NewLit>({auxg.back(), -g});
+			// no merges in this resolultion step
+			rup.write_clause<NewLit>({gvar});
 
 			grat_proof.push_back(3);
 			grat_proof.push_back(-rup.num_clauses);
-			grat_proof.push_back(gvar_downwards_propagation_sequence.back());
+			grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+			grat_proof.insert(grat_proof.end(), gvar_eflit_falsification_sequence.rbegin(), gvar_eflit_falsification_sequence.rend());
+			grat_proof.insert(grat_proof.end(), g_def_propagation_sequence.begin(), g_def_propagation_sequence.end());
+			grat_proof.insert(grat_proof.end(), reduction_propagation_sequence.begin(), reduction_propagation_sequence.end());
+
+			// if this is a resolution step with reduction, additionally one of the parents propagates
+			if (parent_right) {
+				grat_proof.push_back(get_grat_id[parent_right]);
+			}
+
+			// end propagation sequence
 			grat_proof.push_back(0);
-			grat_proof.push_back(gvar_downwards_shortcut_sequence.back());
+
+			// finally, we get a conflict on the other parent
+			grat_proof.push_back(get_grat_id[parent_left]);
+
+			// mark the newly added clause as unit
+			grat_proof.push_back(1);
+			grat_proof.push_back(-rup.num_clauses);
+			grat_proof.push_back(0);
+		}
+
+		gvar_downwards_propagation_sequence.clear();
+		gvar_eflit_falsification_sequence.clear();
+
+		// handle the part with reduced merged literals
+		for (vector<OldVar>::reverse_iterator rit = reduced_merged.rbegin(); rit != reduced_merged.rend(); rit++) {
+			OldVar var = *rit;
+			NewVar var_phase = get_phase(resolvent, var);
+			gvar = auxg.back();
+			auxg.pop_back();
+
+			NewVar out_var = var;
+			auto found = countermodel_out_var.find(var);
+			if (found != countermodel_out_var.end()){
+				out_var = found->second;
+			}
 			
-			gvar_downwards_shortcut_sequence.push_back(-rup.num_clauses);
-		} else {
-			gvar_downwards_shortcut_sequence.push_back(gvar_downwards_propagation_sequence.back());
+			// create the f' variables and push both entries to the countermodel
+			NewVar f1 = get_fresh_variable();
+			NewVar f2 = get_fresh_variable();
+			// TODO: cache the outcome of the following definitions based on the phase variable
+			cert.define_variable_clause<NewLit>(f1, {g, -var_phase});
+			cert.define_variable_clause<NewLit>(f2, {g, var_phase});
+
+			// new_out := f1 & ( -f2 | ... )
+			NewVar new_out1 = get_fresh_variable();
+			NewVar new_out2 = get_fresh_variable();
+			cert.define_variable_term<NewLit>(out_var, {f1, new_out1});
+			cert.define_variable_clause<NewLit>(new_out1, {-f2, new_out2});
+
+			auto prop_clause = prop.find(var);
+
+			rup.write_clause<NewLit>({gvar, -var_phase});
+
+			grat_proof.push_back(3);
+			grat_proof.push_back(-rup.num_clauses);
+			//grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+			if (!gvar_downwards_shortcut_sequence.empty()) {
+				grat_proof.push_back(gvar_downwards_shortcut_sequence.back()); // g := false
+			}
+			grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 9); // f1 := false
+			grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 5); // out_var := false
+			if (prop_clause != prop.end()) {
+				grat_proof.push_back(prop_clause->second[1]);
+			}
+			grat_proof.push_back(eflit_def[get_eflit(var, var_phase)] + 1);
+			grat_proof.push_back(0);
+			grat_proof.push_back(gvar_definition_conflict_clause.back());
+
+			rup.write_clause<NewLit>({gvar});
+
+			grat_proof.push_back(3);
+			grat_proof.push_back(-rup.num_clauses);
+			grat_proof.push_back(-(rup.num_clauses - 1));
+			//grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
+			if (!gvar_downwards_shortcut_sequence.empty()) {
+				grat_proof.push_back(gvar_downwards_shortcut_sequence.back()); // g := false
+				gvar_downwards_shortcut_sequence.pop_back();
+			}
+			grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 6);  // f2 := false
+			grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 2);  // new_out1 := true
+			grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 10); // f1 := true
+			grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 3);  // out_var := true
+			if (prop_clause != prop.end()) {
+				grat_proof.push_back(prop_clause->second[0]);
+			}
+			grat_proof.push_back(eflit_def[get_eflit(var, var_phase)] + 0);
+			grat_proof.push_back(0);
+			grat_proof.push_back(gvar_definition_conflict_clause.back());
+
+			grat_proof.push_back(1);
+			grat_proof.push_back(-rup.num_clauses);
+			grat_proof.push_back(0);
+
+			countermodel_out_var[var] = new_out2;
+			
+			gvar_definition_conflict_clause.pop_back();
 		}
-	}
-
-	// setting (-g) propagates the negation of the current clause via the 2-clauses
-	vector<GRAT_ClauseID> g_def_propagation_sequence;
-
-	for (GRAT_ClauseID g_binclause_id = current_grat_id - shadcls.size(); g_binclause_id < current_grat_id; ++g_binclause_id) {
-		g_def_propagation_sequence.push_back(g_binclause_id);
-	}
-
-	// handle the simple part of the reduction step
-	// compute the countermodel and the propagation sequence
-	vector<GRAT_ClauseID> reduction_propagation_sequence;
-
-	for (OldLit lit : reduced_simple) {
-
-		++num_reductions;
-		OldVar var = abs(lit);
-
-		/* out_var is the variable representing the yet unknown partial
-		 * countermodel circuit for var (by default var)
+		
+		/* add the clauses that short-circuit the RFAO array to the last partial circuit
 		 *
-		 * since all the previous (g) unit clauses are in the proof,
-		 * the value of var is equivalent to out_var via the prop clauses */ 
-		NewVar out_var = var;
-		auto found = countermodel_out_var.find(var);
-		if (found != countermodel_out_var.end()){
-			out_var = found->second;
-		}
+		 * for a given var = abs(lit), we have that
+		 *	 ( "|" is logical or, "{}" designates a falsified literal )
+		 *
+		 * if lit > 0:
+		 *	 current_id		: -old_out | new_out
+		 *	 current_id + 1 : old_out | {-g} | -new_out
+		 * if lit < 0:
+		 *	 current_id		: old_out | -new_out
+		 *	 current_id + 1 : -old_out | {-g} | new_out
+		 *
+		 * and regardless (prop_clause[x] propagates 1-x into var)
+		 *
+		 *			 SHOULDN'T THIS BE CHANGED THOUGH?
+		 * 
+		 * prop_clause[0] = var | -old_out
+		 * prop_clause[1] = -var | old_out
+		 *
+		 * the new prop_clause will be the resolvent of the old prop_clause and the
+		 * appropriate definition. This is formalized below.
+		 *
+		 */
+		GRAT_ClauseID running_grat_id = cert.num_clauses + num_cnf_clauses - 3*reduced_simple.size() - 12*reduced_merged.size() + 2;
+		for (int32_t lit : reduced_simple) {
+			int32_t var = abs(lit);
+			GRAT_ClauseID delta = (lit > 0);
 
-		/* new_out will be the new out_var, representing the smaller
-		 * unknown circuit */
-		int64_t new_out = get_fresh_variable();
-
-		if (lit < 0) {
-			cert.define_variable_clause<NewLit>(out_var, {-g, new_out});
-			reduction_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
 			auto prop_clause = prop.find(var);
 			if (prop_clause != prop.end()) {
-				reduction_propagation_sequence.push_back(prop_clause->second[0]);
+
+				NewVar out_var = countermodel_out_var[var];
+
+				rup.write_clause<NewLit>({var, -out_var});
+				grat_proof.push_back(3);
+				grat_proof.push_back(-rup.num_clauses);
+				grat_proof.push_back(prop_clause->second[0]);
+				grat_proof.push_back(0);
+				grat_proof.push_back(running_grat_id + delta);
+				prop_clause->second[0] = -rup.num_clauses;
+
+				rup.write_clause<NewLit>({-var, out_var});
+				grat_proof.push_back(3);
+				grat_proof.push_back(-rup.num_clauses);
+				grat_proof.push_back(prop_clause->second[1]);
+				grat_proof.push_back(0);
+				grat_proof.push_back(running_grat_id + 1 - delta);
+				prop_clause->second[1] = -rup.num_clauses;
+
+			} else {
+				prop[var] = {{running_grat_id + delta, running_grat_id + 1 - delta}};
 			}
-		} else {
-			cert.define_variable_term<NewLit>(out_var, {g, new_out});
-			reduction_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
+			running_grat_id += 3;
+		}
+
+		running_grat_id = cert.num_clauses + num_cnf_clauses - 12*reduced_merged.size();
+
+		// update prop clauses for reduced merged literals
+		for (vector<OldVar>::reverse_iterator rit = reduced_merged.rbegin(); rit != reduced_merged.rend(); rit++) {
+			OldVar var = *rit;
 			auto prop_clause = prop.find(var);
-			if (prop_clause != prop.end()) {
-				reduction_propagation_sequence.push_back(prop_clause->second[1]);
-			}
-		}
-		countermodel_out_var[var] = new_out;
-	} 
-
-	// gvar = resolvent after reducing everything simple
-	NewVar gvar = auxg.back();
-	auxg.pop_back();
-	gvar_downwards_shortcut_sequence.pop_back();
-
-	if (!merged_lits.empty()) {
-		// here gvar is guaranteed to be non-zero, because there were merges, but
-		// we have not reduced them yet (gvar = clause after reducing simple literals)
-
-		rup.write_clause<NewLit>({pivot, gvar});
-
-		// begin propagation sequence for a rup clause
-		grat_proof.push_back(3);
-		// the id of the newly added rup clause
-		grat_proof.push_back(-rup.num_clauses);
-		grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
-		grat_proof.insert(grat_proof.end(), gvar_eflit_falsification_sequence.rbegin(), gvar_eflit_falsification_sequence.rend());
-		grat_proof.insert(grat_proof.end(), g_def_propagation_sequence.begin(), g_def_propagation_sequence.end());
-		grat_proof.insert(grat_proof.end(), reduction_propagation_sequence.begin(), reduction_propagation_sequence.end());
-		grat_proof.insert(grat_proof.end(), merge_propagation_sequence_left.begin(), merge_propagation_sequence_left.end());
-		grat_proof.push_back(0);
-		grat_proof.push_back(get_grat_id[parent_left]);
-
-		rup.write_clause<NewLit>({gvar});
-
-		// begin propagation sequence for a rup clause
-		grat_proof.push_back(3);
-		// the id of the newly added rup clause
-		grat_proof.push_back(-rup.num_clauses);
-		grat_proof.push_back(-(rup.num_clauses - 1));
-		grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
-		grat_proof.insert(grat_proof.end(), gvar_eflit_falsification_sequence.rbegin(), gvar_eflit_falsification_sequence.rend());
-		grat_proof.insert(grat_proof.end(), g_def_propagation_sequence.begin(), g_def_propagation_sequence.end());
-		grat_proof.insert(grat_proof.end(), reduction_propagation_sequence.begin(), reduction_propagation_sequence.end());
-		grat_proof.insert(grat_proof.end(), merge_propagation_sequence_right.begin(), merge_propagation_sequence_right.end());
-		grat_proof.push_back(0);
-		grat_proof.push_back(get_grat_id[parent_right]);
-
-		// mark the newly added clause as unit
-		grat_proof.push_back(1);
-		grat_proof.push_back(-rup.num_clauses);
-		grat_proof.push_back(0);
-
-	} else {
-		// no merges in this resolultion step
-		rup.write_clause<NewLit>({gvar});
-
-		grat_proof.push_back(3);
-		grat_proof.push_back(-rup.num_clauses);
-		grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
-		grat_proof.insert(grat_proof.end(), gvar_eflit_falsification_sequence.rbegin(), gvar_eflit_falsification_sequence.rend());
-		grat_proof.insert(grat_proof.end(), g_def_propagation_sequence.begin(), g_def_propagation_sequence.end());
-		grat_proof.insert(grat_proof.end(), reduction_propagation_sequence.begin(), reduction_propagation_sequence.end());
-
-		// if this is a resolution step with reduction, additionally one of the parents propagates
-		if (parent_right) {
-			grat_proof.push_back(get_grat_id[parent_right]);
-		}
-
-		// end propagation sequence
-		grat_proof.push_back(0);
-
-		// finally, we get a conflict on the other parent
-		grat_proof.push_back(get_grat_id[parent_left]);
-
-		// mark the newly added clause as unit
-		grat_proof.push_back(1);
-		grat_proof.push_back(-rup.num_clauses);
-		grat_proof.push_back(0);
-	}
-
-	gvar_downwards_propagation_sequence.clear();
-	gvar_eflit_falsification_sequence.clear();
-
-	// handle the part with reduced merged literals
-	for (vector<OldVar>::reverse_iterator rit = reduced_merged.rbegin(); rit != reduced_merged.rend(); rit++) {
-		OldVar var = *rit;
-		NewVar var_phase = get_phase(resolvent, var);
-		gvar = auxg.back();
-		auxg.pop_back();
-
-		NewVar out_var = var;
-		auto found = countermodel_out_var.find(var);
-		if (found != countermodel_out_var.end()){
-			out_var = found->second;
-		}
-		
-		// create the f' variables and push both entries to the countermodel
-		NewVar f1 = get_fresh_variable();
-		NewVar f2 = get_fresh_variable();
-		// TODO: cache the outcome of the following definitions based on the phase variable
-		cert.define_variable_clause<NewLit>(f1, {g, -var_phase});
-		cert.define_variable_clause<NewLit>(f2, {g, var_phase});
-
-		// new_out := f1 & ( -f2 | ... )
-		NewVar new_out1 = get_fresh_variable();
-		NewVar new_out2 = get_fresh_variable();
-		cert.define_variable_term<NewLit>(out_var, {f1, new_out1});
-		cert.define_variable_clause<NewLit>(new_out1, {-f2, new_out2});
-
-		auto prop_clause = prop.find(var);
-
-		rup.write_clause<NewLit>({gvar, -var_phase});
-
-		grat_proof.push_back(3);
-		grat_proof.push_back(-rup.num_clauses);
-		//grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
-		if (!gvar_downwards_shortcut_sequence.empty()) {
-			grat_proof.push_back(gvar_downwards_shortcut_sequence.back()); // g := false
-		}
-		grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 9); // f1 := false
-		grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 5); // out_var := false
-		if (prop_clause != prop.end()) {
-			grat_proof.push_back(prop_clause->second[1]);
-		}
-		grat_proof.push_back(eflit_def[get_eflit(var, var_phase)] + 1);
-		grat_proof.push_back(0);
-		grat_proof.push_back(gvar_definition_conflict_clause.back());
-
-		rup.write_clause<NewLit>({gvar});
-
-		grat_proof.push_back(3);
-		grat_proof.push_back(-rup.num_clauses);
-		grat_proof.push_back(-(rup.num_clauses - 1));
-		//grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
-		if (!gvar_downwards_shortcut_sequence.empty()) {
-			grat_proof.push_back(gvar_downwards_shortcut_sequence.back()); // g := false
-			gvar_downwards_shortcut_sequence.pop_back();
-		}
-		grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 6);  // f2 := false
-		grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 2);  // new_out1 := true
-		grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 10); // f1 := true
-		grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 3);  // out_var := true
-		if (prop_clause != prop.end()) {
-			grat_proof.push_back(prop_clause->second[0]);
-		}
-		grat_proof.push_back(eflit_def[get_eflit(var, var_phase)] + 0);
-		grat_proof.push_back(0);
-		grat_proof.push_back(gvar_definition_conflict_clause.back());
-
-		grat_proof.push_back(1);
-		grat_proof.push_back(-rup.num_clauses);
-		grat_proof.push_back(0);
-
-		countermodel_out_var[var] = new_out2;
-		
-		gvar_definition_conflict_clause.pop_back();
-	}
-	
-	/* add the clauses that short-circuit the RFAO array to the last partial circuit
-	 *
-	 * for a given var = abs(lit), we have that
-	 *	 ( "|" is logical or, "{}" designates a falsified literal )
-	 *
-	 * if lit > 0:
-	 *	 current_id		: -old_out | new_out
-	 *	 current_id + 1 : old_out | {-g} | -new_out
-	 * if lit < 0:
-	 *	 current_id		: old_out | -new_out
-	 *	 current_id + 1 : -old_out | {-g} | new_out
-	 *
-	 * and regardless (prop_clause[x] propagates 1-x into var)
-	 *
-	 *			 SHOULDN'T THIS BE CHANGED THOUGH?
-	 * 
-	 * prop_clause[0] = var | -old_out
-	 * prop_clause[1] = -var | old_out
-	 *
-	 * the new prop_clause will be the resolvent of the old prop_clause and the
-	 * appropriate definition. This is formalized below.
-	 *
-	 */
-	GRAT_ClauseID running_grat_id = cert.num_clauses + num_cnf_clauses - 3*reduced_simple.size() - 12*reduced_merged.size() + 2;
-	for (int32_t lit : reduced_simple) {
-		int32_t var = abs(lit);
-		GRAT_ClauseID delta = (lit > 0);
-
-		auto prop_clause = prop.find(var);
-		if (prop_clause != prop.end()) {
 
 			NewVar out_var = countermodel_out_var[var];
+
+			grat_proof.push_back(1);
+			grat_proof.push_back(running_grat_id + 1);
+			grat_proof.push_back(running_grat_id + 4);
+			grat_proof.push_back(0);
 
 			rup.write_clause<NewLit>({var, -out_var});
 			grat_proof.push_back(3);
 			grat_proof.push_back(-rup.num_clauses);
-			grat_proof.push_back(prop_clause->second[0]);
+			grat_proof.push_back(running_grat_id + 11);
+			if (prop_clause != prop.end()) {
+				grat_proof.push_back(prop_clause->second[0]);
+				prop_clause->second[0] = -rup.num_clauses;
+			}
 			grat_proof.push_back(0);
-			grat_proof.push_back(running_grat_id + delta);
-			prop_clause->second[0] = -rup.num_clauses;
+			grat_proof.push_back(running_grat_id + 9);
 
 			rup.write_clause<NewLit>({-var, out_var});
 			grat_proof.push_back(3);
 			grat_proof.push_back(-rup.num_clauses);
-			grat_proof.push_back(prop_clause->second[1]);
-			grat_proof.push_back(0);
-			grat_proof.push_back(running_grat_id + 1 - delta);
-			prop_clause->second[1] = -rup.num_clauses;
-
-		} else {
-			prop[var] = {{running_grat_id + delta, running_grat_id + 1 - delta}};
-		}
-		running_grat_id += 3;
-	}
-
-	running_grat_id = cert.num_clauses + num_cnf_clauses - 12*reduced_merged.size();
-
-	// update prop clauses for reduced merged literals
-	for (vector<OldVar>::reverse_iterator rit = reduced_merged.rbegin(); rit != reduced_merged.rend(); rit++) {
-		OldVar var = *rit;
-		auto prop_clause = prop.find(var);
-
-		NewVar out_var = countermodel_out_var[var];
-
-		grat_proof.push_back(1);
-		grat_proof.push_back(running_grat_id + 1);
-		grat_proof.push_back(running_grat_id + 4);
-		grat_proof.push_back(0);
-
-		rup.write_clause<NewLit>({var, -out_var});
-		grat_proof.push_back(3);
-		grat_proof.push_back(-rup.num_clauses);
-		grat_proof.push_back(running_grat_id + 11);
-		if (prop_clause != prop.end()) {
-			grat_proof.push_back(prop_clause->second[0]);
-			prop_clause->second[0] = -rup.num_clauses;
-		}
-		grat_proof.push_back(0);
-		grat_proof.push_back(running_grat_id + 9);
-
-		rup.write_clause<NewLit>({-var, out_var});
-		grat_proof.push_back(3);
-		grat_proof.push_back(-rup.num_clauses);
-		grat_proof.push_back(running_grat_id + 12);
-		if (prop_clause != prop.end()) {
-			grat_proof.push_back(prop_clause->second[1]);
-			prop_clause->second[1] = -rup.num_clauses;
-		}
-		grat_proof.push_back(0);
-		grat_proof.push_back(running_grat_id + 8);
-
-		running_grat_id += 12;
-
-		if (prop_clause == prop.end()) {
-			prop[var] = {{-(rup.num_clauses - 1), -rup.num_clauses}};
-		}
-	}
-
-	reduced_lits.clear();
-	reduced_simple.clear();
-	reduced_merged.clear();
-	/* if a clause has been replaced by a g variable, mark that it's deletion
-	 * information should not be forwarded to the rup proof */
-	if (delinfo)
-		no_delete.insert(resolvent);
-} else {
-	/* okay, weird shit going on, apparently it can happen that DepQBF
-	 * performs dummy reductions and the reduced clause is then equal
-	 * to the premise. Therefore, we have to check if this is truly a
-	 * resolution step, in which case we proceed as usual, or whether
-	 * this is a fake reduction, in which case we re-route the GRAT id. */
-	if (parent_right > 0) {
-		// if the shadow clause is empty and there were no reductions,
-		// we know that there were no merges and both premises are unit
-		if (shadcls.empty()) {
-			grat_proof.push_back(1);
-			grat_proof.push_back(get_grat_id[parent_left]);
-			grat_proof.push_back(0);
-			conflict_clause = get_grat_id[parent_right];
-		} else {
-			// if there were merged literals, we need to distinguish cases
-			// based on the pivot in order to propagate everything
-			if (!merged_lits.empty()) {
-				rup.ofs << pivot << " "; rup.write_clause(shadcls);
-
-				grat_proof.push_back(3);
-				grat_proof.push_back(-rup.num_clauses);
-				grat_proof.insert(grat_proof.end(), merge_propagation_sequence_left.begin(), merge_propagation_sequence_left.end());
-				grat_proof.push_back(0);
-				grat_proof.push_back(get_grat_id[parent_left]);
-
-				rup.write_clause(shadcls);
-
-				grat_proof.push_back(3);
-				grat_proof.push_back(-rup.num_clauses);
-				grat_proof.push_back(-(rup.num_clauses - 1));
-				grat_proof.insert(grat_proof.end(), merge_propagation_sequence_right.begin(), merge_propagation_sequence_right.end());
-				grat_proof.push_back(0);
-				grat_proof.push_back(get_grat_id[parent_right]);
-
-			} else {
-				rup.write_clause(shadcls);
-
-				grat_proof.push_back(3);
-				grat_proof.push_back(-rup.num_clauses);
-				grat_proof.push_back(get_grat_id[parent_right]);
-				grat_proof.push_back(0);
-				grat_proof.push_back(get_grat_id[parent_left]);
+			grat_proof.push_back(running_grat_id + 12);
+			if (prop_clause != prop.end()) {
+				grat_proof.push_back(prop_clause->second[1]);
+				prop_clause->second[1] = -rup.num_clauses;
 			}
-			get_grat_id[resolvent] = -rup.num_clauses;
+			grat_proof.push_back(0);
+			grat_proof.push_back(running_grat_id + 8);
+
+			running_grat_id += 12;
+
+			if (prop_clause == prop.end()) {
+				prop[var] = {{-(rup.num_clauses - 1), -rup.num_clauses}};
+			}
 		}
+
+		reduced_lits.clear();
+		reduced_simple.clear();
+		reduced_merged.clear();
+		/* if a clause has been replaced by a g variable, mark that it's deletion
+		 * information should not be forwarded to the rup proof */
+		if (delinfo)
+			no_delete.insert(resolvent);
 	} else {
-		get_grat_id[resolvent] = get_grat_id[parent_left];
-		if (shadcls.empty()) {
-			conflict_clause = get_grat_id[parent_left];
+		/* okay, weird shit going on, apparently it can happen that DepQBF
+		 * performs dummy reductions and the reduced clause is then equal
+		 * to the premise. Therefore, we have to check if this is truly a
+		 * resolution step, in which case we proceed as usual, or whether
+		 * this is a fake reduction, in which case we re-route the GRAT id. */
+		if (parent_right > 0) {
+			// if the shadow clause is empty and there were no reductions,
+			// we know that there were no merges and both premises are unit
+			if (shadcls.empty()) {
+				grat_proof.push_back(1);
+				grat_proof.push_back(get_grat_id[parent_left]);
+				grat_proof.push_back(0);
+				conflict_clause = get_grat_id[parent_right];
+			} else {
+				// if there were merged literals, we need to distinguish cases
+				// based on the pivot in order to propagate everything
+				if (!merged_lits.empty()) {
+					rup.ofs << pivot << " "; rup.write_clause(shadcls);
+
+					grat_proof.push_back(3);
+					grat_proof.push_back(-rup.num_clauses);
+					grat_proof.insert(grat_proof.end(), merge_propagation_sequence_left.begin(), merge_propagation_sequence_left.end());
+					grat_proof.push_back(0);
+					grat_proof.push_back(get_grat_id[parent_left]);
+
+					rup.write_clause(shadcls);
+
+					grat_proof.push_back(3);
+					grat_proof.push_back(-rup.num_clauses);
+					grat_proof.push_back(-(rup.num_clauses - 1));
+					grat_proof.insert(grat_proof.end(), merge_propagation_sequence_right.begin(), merge_propagation_sequence_right.end());
+					grat_proof.push_back(0);
+					grat_proof.push_back(get_grat_id[parent_right]);
+
+				} else {
+					rup.write_clause(shadcls);
+
+					grat_proof.push_back(3);
+					grat_proof.push_back(-rup.num_clauses);
+					grat_proof.push_back(get_grat_id[parent_right]);
+					grat_proof.push_back(0);
+					grat_proof.push_back(get_grat_id[parent_left]);
+				}
+				get_grat_id[resolvent] = -rup.num_clauses;
+			}
+		} else {
+			get_grat_id[resolvent] = get_grat_id[parent_left];
+			if (shadcls.empty()) {
+				conflict_clause = get_grat_id[parent_left];
+			}
+		}
+
+		if (shadcls.size() <= delinfo) {
+			no_delete.insert(resolvent);
 		}
 	}
 
-	if (shadcls.size() <= delinfo) {
-		no_delete.insert(resolvent);
+	merged_lits.clear();
+	shadcls.clear();
+
+	// clear the phases of reduced literals
+	for (OldLit lit : reduced_lits) {
+		if (lit > 0) {
+			phase.erase({resolvent, lit});
+		}
 	}
-}
 
-merged_lits.clear();
-shadcls.clear();
-
-// clear the phases of reduced literals
-for (OldLit lit : reduced_lits) {
-	if (lit > 0) {
-		phase.erase({resolvent, lit});
-	}
-}
-
-return 0;
+	return 0;
 }
 
 bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {
