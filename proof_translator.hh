@@ -307,8 +307,8 @@ inline QRP_ClauseID ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp
 
 	string line;
 	QRP_ClauseID empty_constraint_id = 0;
-	int empty_constraint_type;
-	while (std::getline(qrp, line)) {
+	int empty_constraint_type = 0;
+	while (empty_constraint_id == 0 && std::getline(qrp, line)) {
 
 		char * tmp_line;
 
@@ -323,7 +323,6 @@ inline QRP_ClauseID ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp
 			// empty clause
 			empty_constraint_id = id;
 			empty_constraint_type = constraint_type;
-			break;
 		} else {
 			tmp_line = strstr(tmp_line, " 0 ");
 			if (tmp_line == NULL) {

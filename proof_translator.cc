@@ -180,6 +180,7 @@ bool ProofTranslator::translate() {
 					spare_QRP_ID_idx = 1 - spare_QRP_ID_idx;
 					// compute resolution of temporary_parent_left and parents_right[i]
 					// into clause_database[temporary_resolvent]
+					
 					clause_database[temporary_resolvent] = resolve(
 							clause_database[temporary_parent_left],
 							clause_database[parents_right[i]]
@@ -203,8 +204,8 @@ bool ProofTranslator::translate() {
 				if (result != 0)
 					return result;
 
-				if (temporary_resolvent != parent_left) {
-					forget(temporary_resolvent);
+				if (temporary_parent_left != parent_left) {
+					forget(temporary_parent_left);
 				}
 
 				bool deletion_block_is_open = false;
@@ -499,7 +500,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 		vector<GRAT_ClauseID> gvar_downwards_shortcut_sequence;
 		vector<GRAT_ClauseID> gvar_eflit_falsification_sequence;
 		vector<GRAT_ClauseID> gvar_definition_conflict_clause;
-
+		
 		for (OldVar var : reduced_merged) {
 			NewVar last_aux = auxg.back();
 			auxg.push_back(get_fresh_variable());
@@ -1111,11 +1112,21 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<OldLit>& c2) {
 	vector<OldLit> resolvent;
 	size_t i1 = 0, i2 = 0;
+
+	OldVar max_primary_depth = 0;
 	while (i1 < c1.size() || i2 < c2.size()) {
 		if (i1 == c1.size()) {
-			resolvent.push_back(c2[i2++]);
+			OldVar var = abs(c2[i2]);
+			if (var_data[var].type == primary_type && max_primary_depth < var_data[var].depth) {
+				max_primary_depth = var_data[var].depth;
+			}
+			++i2;
 		} else if (i2 == c2.size()) {
-			resolvent.push_back(c1[i1++]);
+			OldVar var = abs(c1[i1]);
+			if (var_data[var].type == primary_type && max_primary_depth < var_data[var].depth) {
+				max_primary_depth = var_data[var].depth;
+			}
+			++i1;
 		} else {
 			OldLit lit1 = c1[i1];
 			OldVar var1 = abs(lit1);
@@ -1123,24 +1134,84 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
 			OldVar var2 = abs(lit2);
 			if (var1 == var2) {
 				if (lit1 == lit2) {
-					resolvent.push_back(lit1);
+					if (var_data[var1].type == primary_type && max_primary_depth < var_data[var1].depth) {
+						max_primary_depth = var_data[var1].depth;
+					}
 					++i1;
 					++i2;
 				} else {
-					// according to compare_lits, the negative literal comes first
-					if (var_data[var1].type != primary_type) {
-						// only push secondary clashing literals
-						resolvent.push_back(-var1);
-						resolvent.push_back(var1);
-					}
+					// even if this is a primary, it's the pivot, so it won't appear in the resolvent
 					++i1;
 					++i2;
 				}
 			} else if (var1 < var2) {
-				resolvent.push_back(lit1);
+				if (var_data[var1].type == primary_type && max_primary_depth < var_data[var1].depth) {
+					max_primary_depth = var_data[var1].depth;
+				}
 				++i1;
 			} else {
-				resolvent.push_back(lit2);
+				if (var_data[var2].type == primary_type && max_primary_depth < var_data[var2].depth) {
+					max_primary_depth = var_data[var1].depth;
+				}
+				++i2;
+			}
+		}
+	}
+
+	i1 = i2 = 0;
+
+	while (i1 < c1.size() || i2 < c2.size()) {
+		if (i1 == c1.size()) {
+			OldLit lit = c2[i2];
+			OldVar var = abs(lit);
+			if (var_data[var].type == primary_type || var_data[var].depth < max_primary_depth)
+				resolvent.push_back(lit);
+			++i2;
+		} else if (i2 == c2.size()) {
+			OldLit lit = c1[i1];
+			OldVar var = abs(lit);
+			if (var_data[var].type == primary_type || var_data[var].depth < max_primary_depth)
+				resolvent.push_back(lit);
+			++i1;
+		} else {
+			OldLit lit1 = c1[i1];
+			OldVar var1 = abs(lit1);
+			OldLit lit2 = c2[i2];
+			OldVar var2 = abs(lit2);
+			if (var1 == var2) {
+				if (lit1 == lit2) {
+					if (var_data[var1].type == primary_type || var_data[var1].depth < max_primary_depth)
+						resolvent.push_back(lit1);
+					++i1;
+					++i2;
+				} else {
+					if (var_data[var1].type == primary_type) {
+						++i1;
+						++i2;
+					} else {
+						if (lit1 < lit2) {
+							// according to compare_lits, the negative literal comes first
+							if (var_data[var1].depth < max_primary_depth) {
+								// only push secondary clashing literals
+								resolvent.push_back(lit1);
+							}
+							++i1;
+						} else {
+							if (var_data[var1].depth < max_primary_depth) {
+								// only push secondary clashing literals
+								resolvent.push_back(lit2);
+							}
+							++i2;
+						}
+					}
+				}
+			} else if (var1 < var2) {
+				if (var_data[var1].type == primary_type || var_data[var1].depth < max_primary_depth)
+					resolvent.push_back(lit1);
+				++i1;
+			} else {
+				if (var_data[var2].type == primary_type || var_data[var2].depth < max_primary_depth)
+					resolvent.push_back(lit2);
 				++i2;
 			}
 
@@ -1202,22 +1273,22 @@ void ProofTranslator::split_reduction_step(QRP_ClauseID id, vector<OldLit>& redu
 }
 
 vector<NewVar> ProofTranslator::shadow(QRP_ClauseID id) {
-	/* if (verbose_output && !merged_vars_in[id].empty()) {
+	if (verbose_output && !merged_vars_in[id].empty()) {
 		std::cout << "Shadow clause for step " << id << ":";
-	} */
+	}
 	vector<int64_t> shadcls;
 	for (int32_t lit : clause_database[id]) {
 		int64_t ef_lit = get_eflit(lit, get_phase(id, lit));
 		if (ef_lit == lit || lit > 0) {
 			shadcls.push_back(ef_lit);
-			/* if (verbose_output && !merged_vars_in[id].empty()) {
+			if (verbose_output && !merged_vars_in[id].empty()) {
 				std::cout << " " << ef_lit << "(" << lit << ")";
-			} */
+			}
 		}
 	}
-	/* if (verbose_output && !merged_vars_in[id].empty())
+	if (verbose_output && !merged_vars_in[id].empty())
 		std::cout << std::endl;
-	*/
+	
 	return shadcls;
 }
 
