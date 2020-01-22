@@ -173,9 +173,8 @@ bool ProofTranslator::translate() {
 			} else {
 				size_t i = 0;
 				int spare_QRP_ID_idx = 0;
-				temporary_resolvent = parent_left;
+				temporary_parent_left = parent_left;
 				while (i < parents_right.size() - 1) {
-					temporary_parent_left = temporary_resolvent;
 					temporary_resolvent = spare_QRP_IDs[spare_QRP_ID_idx];
 					spare_QRP_ID_idx = 1 - spare_QRP_ID_idx;
 					// compute resolution of temporary_parent_left and parents_right[i]
@@ -195,12 +194,17 @@ bool ProofTranslator::translate() {
 						return result;
 
 					++i;
+					temporary_parent_left = temporary_resolvent;
 				}
 
-				int result = translate_resolution_step(temporary_resolvent, parents_right.back(), current_id);
+				int result = translate_resolution_step(temporary_parent_left, parents_right.back(), current_id);
 				// TODO: implement proper exception handling
 				if (result != 0)
 					return result;
+
+				if (temporary_resolvent != parent_left) {
+					forget(temporary_resolvent);
+				}
 
 				bool deletion_block_is_open = false;
 
@@ -310,6 +314,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			std::cerr << "Failed resolution step with id " << resolvent << std::endl;
 			return -1;
 		}
+
 		// first update phases, then handle reductions
 		// merged_lits contains a single literal for every merged variables,
 		// namely one that appears in parent_left
@@ -1194,21 +1199,22 @@ void ProofTranslator::split_reduction_step(QRP_ClauseID id, vector<OldLit>& redu
 }
 
 vector<NewVar> ProofTranslator::shadow(QRP_ClauseID id) {
-	if (verbose_output) {
+	/* if (verbose_output && !merged_vars_in[id].empty()) {
 		std::cout << "Shadow clause for step " << id << ":";
-	}
+	} */
 	vector<int64_t> shadcls;
 	for (int32_t lit : clause_database[id]) {
 		int64_t ef_lit = get_eflit(lit, get_phase(id, lit));
 		if (ef_lit == lit || lit > 0) {
 			shadcls.push_back(ef_lit);
-			if (verbose_output) {
+			/* if (verbose_output && !merged_vars_in[id].empty()) {
 				std::cout << " " << ef_lit << "(" << lit << ")";
-			}
+			} */
 		}
 	}
-	if (verbose_output)
+	/* if (verbose_output && !merged_vars_in[id].empty())
 		std::cout << std::endl;
+	*/
 	return shadcls;
 }
 
