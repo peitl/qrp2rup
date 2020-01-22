@@ -45,10 +45,10 @@ public:
 	unordered_map<QRP_ClauseID, vector<OldVar>> clause_database;
 
 	//unordered_map<OldVar, vector<RFAO_node>> countermodel;
-    
-    /* this contains the ids of clauses that were replaced by 'g' variables,
-     * and thus it makes no sense to print DRAT deletion information for them. */
-    unordered_set<QRP_ClauseID> no_delete;
+	
+	/* this contains the ids of clauses that were replaced by 'g' variables,
+	 * and thus it makes no sense to print DRAT deletion information for them. */
+	unordered_set<QRP_ClauseID> no_delete;
 
 	unordered_map<ClauseVarPair, NewVar> phase;
 	unordered_map<VarPhasePair, NewVar> eflit;
@@ -80,11 +80,11 @@ public:
 	vector<bool> tautological;
 	vector<OldVar> clause_tseitin_variables = {};
 
-    /* *** GRAT stuff ***
+	/* *** GRAT stuff ***
 	 *
-     * instead of the RFAO arrays, we now only keep track of two clause ids, which
-     * encode the current derived equivalence between a variable and its partial
-     * circuit.
+	 * instead of the RFAO arrays, we now only keep track of two clause ids, which
+	 * encode the current derived equivalence between a variable and its partial
+	 * circuit.
 	 *
 	 * prop holds these two clauses, and in fact whenever prop has an entry for var,
 	 * then the two clauses whose ids it holds are
@@ -92,9 +92,9 @@ public:
 	 * (var, -countermodel_out_var[var]) and (-var, countermodel_out_var[var])
 	 *
 	 * *** */
-    unordered_map<OldVar, array<GRAT_ClauseID, 2>> prop;
-    unordered_map<QRP_ClauseID, GRAT_ClauseID> get_grat_id;
-    unordered_map<OldVar, NewVar> countermodel_out_var;
+	unordered_map<OldVar, array<GRAT_ClauseID, 2>> prop;
+	unordered_map<QRP_ClauseID, GRAT_ClauseID> get_grat_id;
+	unordered_map<OldVar, NewVar> countermodel_out_var;
 	GRAT_ClauseID conflict_clause;
 
 	NewVar max_var = 0;
@@ -104,11 +104,11 @@ public:
 	ProofTranslator(const string& qrpfile, const string& qdimacs, bool verbose_output = false) :
 		cert(ClauseWriter(qrpfile + ".cert")),
 		rup(ClauseWriter(qrpfile + ".rup")),
-  		gratfile(qrpfile + ".grat"),
-   		qrpfile(qrpfile),
+		gratfile(qrpfile + ".grat"),
+		qrpfile(qrpfile),
 		qdimacs(qdimacs),
-   		delinfo(false),
-   		verbose_output(verbose_output) {}
+		delinfo(false),
+		verbose_output(verbose_output) {}
 
 	vector<vector<OldLit>> read_qdimacs();
 
@@ -199,13 +199,13 @@ public:
 
 
 inline void ProofTranslator::write_grat_proof() {
-    std::ofstream grat(gratfile, std::ios::binary);
-    for (auto rit = grat_proof.rbegin(); rit != grat_proof.rend(); ++rit) {
-        if (*rit < 0)
-            *rit = num_cnf_clauses + cert.num_clauses - *rit;
-        grat.write((char*)&(*rit), 4);
-    }
-    grat.close();
+	std::ofstream grat(gratfile, std::ios::binary);
+	for (auto rit = grat_proof.rbegin(); rit != grat_proof.rend(); ++rit) {
+		if (*rit < 0)
+			*rit = num_cnf_clauses + cert.num_clauses - *rit;
+		grat.write((char*)&(*rit), 4);
+	}
+	grat.close();
 }
 
 inline void ProofTranslator::display_grat_proof_human_readable() {
@@ -308,28 +308,28 @@ inline QRP_ClauseID ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp
 	string line;
 	QRP_ClauseID id;
 	int empty_constraint_type;
-    while (std::getline(qrp, line)) {
+	while (std::getline(qrp, line)) {
 
-        char * tmp_line;
+		char * tmp_line;
 
-        id = strtoul(line.c_str(), &tmp_line, 10);
+		id = strtoul(line.c_str(), &tmp_line, 10);
 		parents_of[id] = {};
 
 		// skip Qute clause/term flag
 		empty_constraint_type = strtoul(tmp_line, &tmp_line, 10);
 
-        tmp_line = strstr(tmp_line, " 0 ");
-        if (tmp_line == NULL) {
-            std::cerr << "Syntax error in step with the id " << id << std::endl;
-            return 0;
-        }
-        tmp_line += 3;
+		tmp_line = strstr(tmp_line, " 0 ");
+		if (tmp_line == NULL) {
+			std::cerr << "Syntax error in step with the id " << id << std::endl;
+			return 0;
+		}
+		tmp_line += 3;
 
-        QRP_ClauseID parent = 0;
-        while ((parent = strtoul(tmp_line, &tmp_line, 10)) != 0) {
-            parents_of[id].push_back(parent);
-        }
-    }
+		QRP_ClauseID parent = 0;
+		while ((parent = strtoul(tmp_line, &tmp_line, 10)) != 0) {
+			parents_of[id].push_back(parent);
+		}
+	}
 
 	primary_type = (empty_constraint_type == 0);
 
@@ -341,34 +341,34 @@ inline QRP_ClauseID ProofTranslator::parse_DAG_structure_QRP(std::ifstream& qrp,
 
 	string line;
 	QRP_ClauseID id;
-    while (std::tolower(qrp.peek()) != 'r') {
+	while (std::tolower(qrp.peek()) != 'r') {
 		std::getline(qrp, line);
-        char * tmp_line;
+		char * tmp_line;
 
-        id = strtoul(line.c_str(), &tmp_line, 10);
+		id = strtoul(line.c_str(), &tmp_line, 10);
 		parents_of[id] = {};
 
-        tmp_line = strstr(tmp_line, " 0 ");
-        if (tmp_line == NULL) {
-            std::cerr << "Syntax error in step with the id " << id << std::endl;
-            return 0;
-        }
-        tmp_line += 3;
+		tmp_line = strstr(tmp_line, " 0 ");
+		if (tmp_line == NULL) {
+			std::cerr << "Syntax error in step with the id " << id << std::endl;
+			return 0;
+		}
+		tmp_line += 3;
 
-        QRP_ClauseID parent = 0;
-        while ((parent = strtoul(tmp_line, &tmp_line, 10)) != 0) {
-            parents_of[id].push_back(parent);
-        }
-    }
+		QRP_ClauseID parent = 0;
+		while ((parent = strtoul(tmp_line, &tmp_line, 10)) != 0) {
+			parents_of[id].push_back(parent);
+		}
+	}
 
 	return id;
 }
 
 inline bool ProofTranslator::is_SAT_proof(string& result_line) {
-    std::transform(result_line.begin(), result_line.end(), result_line.begin(), tolower);
-    if (result_line == "r sat") {
-        return true;
-    }
+	std::transform(result_line.begin(), result_line.end(), result_line.begin(), tolower);
+	if (result_line == "r sat") {
+		return true;
+	}
 	// TODO: check whether result_line == "r unsat" ?
 	return false;
 }
@@ -377,33 +377,33 @@ inline unordered_map<QRP_ClauseID, QRP_ClauseID> ProofTranslator::find_core(
 		QRP_ClauseID empty_constraint_id,
 		unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of) {
 
-    unordered_map<QRP_ClauseID, QRP_ClauseID> last_use_of;
+	unordered_map<QRP_ClauseID, QRP_ClauseID> last_use_of;
 
-    stack<QRP_ClauseID, vector<QRP_ClauseID>> core_clauses;
-    core_clauses.push(empty_constraint_id);
-    last_use_of[empty_constraint_id] = 0;
-    while (!core_clauses.empty()) {
-        QRP_ClauseID current_id = core_clauses.top();
-        core_clauses.pop();
-        auto pit = parents_of.find(current_id);
-        if (pit != parents_of.end()) {
-            for (auto parent: pit->second) {
-                if (parent) {
-                    auto it = last_use_of.find(parent);
-                    if (it != last_use_of.end()) {
-                        if (current_id > it->second) {
-                            it->second = current_id;
-                        }
-                    } else {
-                        last_use_of.insert({parent, current_id});
-                        core_clauses.push(parent);
-                    }
-                }
-            }
-        }
-    }
+	stack<QRP_ClauseID, vector<QRP_ClauseID>> core_clauses;
+	core_clauses.push(empty_constraint_id);
+	last_use_of[empty_constraint_id] = 0;
+	while (!core_clauses.empty()) {
+		QRP_ClauseID current_id = core_clauses.top();
+		core_clauses.pop();
+		auto pit = parents_of.find(current_id);
+		if (pit != parents_of.end()) {
+			for (auto parent: pit->second) {
+				if (parent) {
+					auto it = last_use_of.find(parent);
+					if (it != last_use_of.end()) {
+						if (current_id > it->second) {
+							it->second = current_id;
+						}
+					} else {
+						last_use_of.insert({parent, current_id});
+						core_clauses.push(parent);
+					}
+				}
+			}
+		}
+	}
 
-    parents_of.clear();
+	parents_of.clear();
 
 	return last_use_of;
 }
@@ -424,8 +424,8 @@ void ProofTranslator::sort_and_remove_duplicate_literals(vector<OldLit>& clause)
 template<typename T>
 inline
 void negate(std::vector<T>& clause) {
-    for (size_t i = 0; i < clause.size(); i++)
-        clause[i] = -clause[i];
+	for (size_t i = 0; i < clause.size(); i++)
+		clause[i] = -clause[i];
 }
 
 inline void ProofTranslator::copy_phases(QRP_ClauseID src, QRP_ClauseID dest) {
