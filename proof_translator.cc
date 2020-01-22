@@ -1113,7 +1113,7 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
 	vector<OldLit> resolvent;
 	size_t i1 = 0, i2 = 0;
 
-	OldVar max_primary_depth = 0;
+	uint32_t max_primary_depth = 0;
 	while (i1 < c1.size() || i2 < c2.size()) {
 		if (i1 == c1.size()) {
 			OldVar var = abs(c2[i2]);
@@ -1151,7 +1151,7 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
 				++i1;
 			} else {
 				if (var_data[var2].type == primary_type && max_primary_depth < var_data[var2].depth) {
-					max_primary_depth = var_data[var1].depth;
+					max_primary_depth = var_data[var2].depth;
 				}
 				++i2;
 			}
@@ -1197,7 +1197,7 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
 							}
 							++i1;
 						} else {
-							if (var_data[var1].depth < max_primary_depth) {
+							if (var_data[var2].depth < max_primary_depth) {
 								// only push secondary clashing literals
 								resolvent.push_back(lit2);
 							}
