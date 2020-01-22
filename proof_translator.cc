@@ -186,6 +186,10 @@ bool ProofTranslator::translate() {
                             );
                     
                     int result = translate_resolution_step(temporary_parent_left, parents_right[i], temporary_resolvent);
+                    if (temporary_parent_left != parent_left) {
+                        forget(temporary_parent_left);
+                    }
+
                     // TODO: implement proper exception handling
                     if (result != 0)
                         return result;
@@ -204,7 +208,7 @@ bool ProofTranslator::translate() {
                 if (it->second == current_id) {
                     last_use_of.erase(it);
                     if (delinfo) {
-                        if (!no_delete.erase(parent_left)) {
+                        if (no_delete.erase(parent_left)) {
                             //rup << "d "; print_clause(rup, shadow(parent_left));
                             // GRAT deletion instead
                             grat_proof.push_back(2);
@@ -212,15 +216,16 @@ bool ProofTranslator::translate() {
                             deletion_block_is_open = true;
                         }
                     }
-                    get_grat_id.erase(parent_left);
-                    clause_database.erase(parent_left);
+                    forget(parent_left);
+                    //get_grat_id.erase(parent_left);
+                    //clause_database.erase(parent_left);
                 }
                 for (QRP_ClauseID parent_right : parents_right) {
                     it = last_use_of.find(parent_right);
                     if (it->second == current_id) {
                         last_use_of.erase(it);
                         if (delinfo) {
-                            if (!no_delete.erase(parent_right)) {
+                            if (no_delete.erase(parent_right)) {
                                 //rup << "d "; print_clause(rup, shadow(parent_right));
                                 // GRAT deletion instead
                                 if (!deletion_block_is_open) {
@@ -230,8 +235,9 @@ bool ProofTranslator::translate() {
                                 grat_proof.push_back(get_grat_id[parent_right]);                            
                             }
                         }
-                        get_grat_id.erase(parent_right);
-                        clause_database.erase(parent_right);
+                        forget(parent_right);
+                        //get_grat_id.erase(parent_right);
+                        //clause_database.erase(parent_right);
                     }
                 }
                 if (deletion_block_is_open) {
@@ -292,6 +298,7 @@ vector<OldLit> reduced_lits;
 vector<OldLit> reduced_simple;
 vector<OldVar> reduced_merged;
 vector<NewVar> auxg; // holds intermediate g-variables for merged reduction steps
+merged_vars_in[resolvent] = {};
 
 OldLit pivot = 0;
 if (parent_right != 0) {
@@ -304,14 +311,20 @@ if (parent_right != 0) {
         return -1;
     }
     // first update phases, then handle reductions
+    // merged_lits contains a single literal for every merged variables,
+    // namely one that appears in parent_left
     for (size_t i = 0; i < merged_lits.size(); ++i) {
         OldLit lit = merged_lits[i];
         OldVar var = abs(lit);
+        merged_vars_in[resolvent].push_back(var);
+
         NewVar phase_left = get_phase(parent_left, lit);
         NewVar phase_right = get_phase(parent_right, -lit);
+
         PivotPhasesTuple cache_key = {pivot, phase_left, phase_right};
+
+        NewVar var_phase;
         unordered_map<PivotPhasesTuple, NewVar>::iterator ppit = phase_cache.find(cache_key);
-        NewVar var_phase, var_eflit;
         if (phase_left == phase_right) {
             // var is in fact not being merged: remove it from merged_lits
             var_phase = phase_left;                     
@@ -327,6 +340,7 @@ if (parent_right != 0) {
         if (verbose_output)
             std::cerr << "Phase of " << var << " in " << resolvent << " is " << var_phase << std::endl;
 
+        NewVar var_eflit;
         unordered_map<VarPhasePair, NewVar>::iterator vpit = eflit.find({var, var_phase});
         if (vpit != eflit.end()) {
             var_eflit = vpit->second;
@@ -879,40 +893,40 @@ return 0;
 }
 
 bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {
-	if (primary_type == 0) {
-		// initial term, careful, it's already negated
-		rup.write_clause(clause_database[current_id]);
-		get_grat_id[current_id] = -rup.num_clauses;
+    if (primary_type == 0) {
+        // initial term, careful, it's already negated
+        rup.write_clause(clause_database[current_id]);
+        get_grat_id[current_id] = -rup.num_clauses;
 
-		grat_proof.push_back(3);
-		grat_proof.push_back(-rup.num_clauses);
-		//memset(initial_term_chi, 0, qbf_num_vars+1);
-		unordered_set<OldLit> initial_term(clause_database[current_id].begin(),
-										   clause_database[current_id].end());
-		GRAT_ClauseID current_clause = 0;
-		for (size_t clause_idx = 0; clause_idx < matrix.size(); ++clause_idx) {
-			vector<OldLit>& clause = matrix[clause_idx];
-			if (!tautological[clause_idx]) {
-				size_t current_lit = 1;
-				for (auto lit : clause) {
-					// initial_term is negated, so check for presence of -lit
-					if (initial_term.count(-lit)) {
-						grat_proof.push_back(current_clause + current_lit);
-						break;
-					} else {
-						++current_lit;
-					}
-				}
-				if (current_lit > clause.size()) {
-					// TODO: implement some incomplete heuristic in order to attempt to recover the satisfying assignment
-					std::cerr << "WARNING: Non-hitting initial term with the id " << current_id << std::endl; 
-					std::cerr << "Unsatisfied clause no. " << clause_idx << " is:" << std::endl;
-					for (auto lit : clause) {
-						std::cerr << lit << " ";
-					}
-					std::cerr << std::endl;
-				}
-			}
+        grat_proof.push_back(3);
+        grat_proof.push_back(-rup.num_clauses);
+        //memset(initial_term_chi, 0, qbf_num_vars+1);
+        unordered_set<OldLit> initial_term(clause_database[current_id].begin(),
+                                           clause_database[current_id].end());
+        GRAT_ClauseID current_clause = 0;
+        for (size_t clause_idx = 0; clause_idx < matrix.size(); ++clause_idx) {
+            vector<OldLit>& clause = matrix[clause_idx];
+            if (!tautological[clause_idx]) {
+                size_t current_lit = 1;
+                for (auto lit : clause) {
+                    // initial_term is negated, so check for presence of -lit
+                    if (initial_term.count(-lit)) {
+                        grat_proof.push_back(current_clause + current_lit);
+                        break;
+                    } else {
+                        ++current_lit;
+                    }
+                }
+                if (current_lit > clause.size()) {
+                    // TODO: implement some incomplete heuristic in order to attempt to recover the satisfying assignment
+                    std::cerr << "WARNING: Non-hitting initial term with the id " << current_id << std::endl;
+                    std::cerr << "Unsatisfied clause no. " << clause_idx << " is:" << std::endl;
+                    for (auto lit : clause) {
+                        std::cerr << lit << " ";
+                    }
+                    std::cerr << std::endl;
+                }
+            }
             current_clause += clause.size() + 1;
         }
         grat_proof.push_back(0);

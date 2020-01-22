@@ -53,6 +53,7 @@ public:
 	unordered_map<ClauseVarPair, NewVar> phase;
 	unordered_map<VarPhasePair, NewVar> eflit;
 	unordered_map<PivotPhasesTuple, NewVar> phase_cache;
+	unordered_map<QRP_ClauseID, vector<OldVar>> merged_vars_in;
 
 	// points to the first of the pair of defining clauses for phase in case pivot is false
 	unordered_map<PivotPhasePair, GRAT_ClauseID> phase_def;
@@ -173,6 +174,8 @@ public:
 			vector<OldLit>& reduced_merged);
 
 	vector<NewVar> shadow(QRP_ClauseID id);
+
+	inline void forget(QRP_ClauseID clause_id);
 
 	// phase functions and co.
 	NewVar get_phase(QRP_ClauseID id, OldLit lit);
@@ -433,8 +436,18 @@ inline void ProofTranslator::copy_phases(QRP_ClauseID src, QRP_ClauseID dest) {
 		unordered_map<ClauseVarPair, NewVar>::iterator it = phase.find({src, var});
 		if (it != phase.end() && phase.find(dest_key) == phase.end()) {
 			phase.insert({dest_key, it->second});
+			merged_vars_in[dest].push_back(var);
 		}
 	}
 };
+
+inline void ProofTranslator::forget(QRP_ClauseID clause_id) {
+	for (OldVar var : merged_vars_in[clause_id]) {
+		phase.erase({clause_id, var});
+	}
+	merged_vars_in.erase(clause_id);
+	clause_database.erase(clause_id);
+	get_grat_id.erase(clause_id);
+}
 
 #endif
