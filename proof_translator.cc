@@ -265,6 +265,11 @@ bool ProofTranslator::translate() {
 				std::cerr << "WARNING: GRAT proof now has " << grat_proof.size() << " entries." << std::endl;
 				threshold += (threshold) / 3;
 			}
+			/*if (current_id == 32185) {
+				std::cout << "Final GRAT proof size: " << grat_proof.size() << std::endl;
+				print_statistics();
+				return 100;
+			}*/
 		}
 	}
 
@@ -585,6 +590,10 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			int64_t new_out = get_fresh_variable();
 
 			if (lit < 0) {
+				// first pack the pertinent prop sequence if it is too long
+				if (prop_pos[var].size() >= 5)
+					pack_prop_sequence(var, true);
+
 				cert.define_variable_clause<NewLit>(out_var, {-g, new_out});
 				reduction_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
 				reduction_propagation_sequence.insert(reduction_propagation_sequence.end(),
@@ -596,6 +605,10 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 					reduction_propagation_sequence.push_back(prop_clause->second[0]);
 				}*/
 			} else {
+				// first pack the pertinent prop sequence if it is too long
+				if (prop_neg[var].size() >= 5)
+					pack_prop_sequence(var, false);
+
 				cert.define_variable_term<NewLit>(out_var, {g, new_out});
 				reduction_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
 				reduction_propagation_sequence.insert(reduction_propagation_sequence.end(),
@@ -725,6 +738,12 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			cert.define_variable_clause<NewLit>(new_out1, {-f2, new_out2});
 
 			//auto prop_clause = prop.find(var);
+			
+			// first pack prop sequences if they are too long
+			if (prop_pos[var].size() >= 5)
+				pack_prop_sequence(var, true);
+			if (prop_neg[var].size() >= 5)
+				pack_prop_sequence(var, false);
 
 			rup.write_clause<NewLit>({gvar, -var_phase});
 
@@ -804,43 +823,9 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			int32_t var = abs(lit);
 			GRAT_ClauseID delta = (lit > 0);
 
-			if (prop_pos[var].size() >= 4) {
+			prop_pos[var].push_back(running_grat_id + delta);
+			prop_neg[var].push_back(running_grat_id + 1 - delta);
 
-				NewVar out_var = countermodel_out_var[var];
-
-				rup.write_clause<NewLit>({var, -out_var});
-				grat_proof.push_back(3);
-				grat_proof.push_back(-rup.num_clauses);
-				grat_proof.insert(grat_proof.end(), prop_pos[var].begin(), prop_pos[var].end());
-				//grat_proof.push_back(prop_clause->second[0]);
-				grat_proof.push_back(0);
-				grat_proof.push_back(running_grat_id + delta);
-
-				prop_pos[var].clear();
-				prop_pos[var].push_back(-rup.num_clauses);
-				//prop_clause->second[0] = -rup.num_clauses;
-			} else {
-				prop_pos[var].push_back(running_grat_id + delta);
-			}
-			if (prop_neg[var].size() >= 4) {
-
-				NewVar out_var = countermodel_out_var[var];
-
-				rup.write_clause<NewLit>({-var, out_var});
-				grat_proof.push_back(3);
-				grat_proof.push_back(-rup.num_clauses);
-				grat_proof.insert(grat_proof.end(), prop_neg[var].begin(), prop_neg[var].end());
-				//grat_proof.push_back(prop_clause->second[1]);
-				grat_proof.push_back(0);
-				grat_proof.push_back(running_grat_id + 1 - delta);
-
-				prop_neg[var].clear();
-				prop_neg[var].push_back(-rup.num_clauses);
-				//prop_clause->second[1] = -rup.num_clauses;
-
-			} else {
-				prop_neg[var].push_back(running_grat_id + 1 - delta);
-			}
 			running_grat_id += 3;
 		}
 
@@ -851,52 +836,16 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			OldVar var = *rit;
 			//auto prop_clause = prop.find(var);
 
-			NewVar out_var = countermodel_out_var[var];
-
 			grat_proof.push_back(1);
 			grat_proof.push_back(running_grat_id + 1);
 			grat_proof.push_back(running_grat_id + 4);
 			grat_proof.push_back(0);
 
-			if (prop_pos[var].size() >= 4) {
-				rup.write_clause<NewLit>({var, -out_var});
-				grat_proof.push_back(3);
-				grat_proof.push_back(-rup.num_clauses);
-				grat_proof.push_back(running_grat_id + 11);
-				grat_proof.insert(grat_proof.end(), prop_pos[var].begin(), prop_pos[var].end());
-				/*if (prop_clause != prop.end()) {
-					grat_proof.push_back(prop_clause->second[0]);
-					prop_clause->second[0] = -rup.num_clauses;
-				}*/
-				grat_proof.push_back(0);
-				grat_proof.push_back(running_grat_id + 9);
+			prop_pos[var].push_back(running_grat_id + 9);
+			prop_pos[var].push_back(running_grat_id + 11);
 
-				prop_pos[var].clear();
-				prop_pos[var].push_back(-rup.num_clauses);
-			} else {
-				prop_pos[var].push_back(running_grat_id + 9);
-				prop_pos[var].push_back(running_grat_id + 11);
-			}
-
-			if (prop_neg[var].size() >= 4) {
-				rup.write_clause<NewLit>({-var, out_var});
-				grat_proof.push_back(3);
-				grat_proof.push_back(-rup.num_clauses);
-				grat_proof.push_back(running_grat_id + 12);
-				grat_proof.insert(grat_proof.end(), prop_neg[var].begin(), prop_neg[var].end());
-				/*if (prop_clause != prop.end()) {
-					grat_proof.push_back(prop_clause->second[1]);
-					prop_clause->second[1] = -rup.num_clauses;
-				}*/
-				grat_proof.push_back(0);
-				grat_proof.push_back(running_grat_id + 8);
-
-				prop_neg[var].clear();
-				prop_neg[var].push_back(-rup.num_clauses);
-			} else {
-				prop_neg[var].push_back(running_grat_id + 8);
-				prop_neg[var].push_back(running_grat_id + 12);
-			}
+			prop_neg[var].push_back(running_grat_id + 8);
+			prop_neg[var].push_back(running_grat_id + 12);
 
 			running_grat_id += 12;
 		}
@@ -977,6 +926,33 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 	}
 
 	return 0;
+}
+
+void ProofTranslator::pack_prop_sequence(OldVar var, bool pos) {
+
+	NewVar out_var = countermodel_out_var[var];
+
+	if (pos) {
+		rup.write_clause<NewLit>({var, -out_var});
+		grat_proof.push_back(3);
+		grat_proof.push_back(-rup.num_clauses);
+		grat_proof.insert(grat_proof.end(), prop_pos[var].begin(), prop_pos[var].end() - 1);
+		grat_proof.push_back(0);
+		grat_proof.push_back(prop_pos[var].back());
+
+		prop_pos[var].clear();
+		prop_pos[var].push_back(-rup.num_clauses);
+	} else {
+		rup.write_clause<NewLit>({var, -out_var});
+		grat_proof.push_back(3);
+		grat_proof.push_back(-rup.num_clauses);
+		grat_proof.insert(grat_proof.end(), prop_neg[var].begin(), prop_neg[var].end() - 1);
+		grat_proof.push_back(0);
+		grat_proof.push_back(prop_neg[var].back());
+
+		prop_neg[var].clear();
+		prop_neg[var].push_back(-rup.num_clauses);
+	}
 }
 
 bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {

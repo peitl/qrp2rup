@@ -190,6 +190,8 @@ public:
 
 	// proof checking
 	
+	void pack_prop_sequence(OldVar var, bool pos);
+	
 	bool record_axiom(QRP_ClauseID current_id);
 
 	int translate_resolution_step(QRP_ClauseID parent_left,
