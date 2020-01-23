@@ -1,4 +1,5 @@
 #include "proof_translator.hh"
+#include "sorted_query_oracle.hh"
 
 using std::ifstream;
 using std::array;
@@ -19,7 +20,7 @@ bool ProofTranslator::translate() {
 	// read up to the preamble line, discard any comments and determine proof format
 	proof_is_qrp = skip_comments(qrp);
 
-	if (verbose_output) {
+	if (verbosity >= 1) {
 		if (proof_is_qrp)
 			std::cout << "QRP format detected." << std::endl;
 		else
@@ -37,7 +38,7 @@ bool ProofTranslator::translate() {
 	
 	unordered_map<QRP_ClauseID, vector<QRP_ClauseID>> parents_of;
 
-	if (verbose_output)
+	if (verbosity >= 1)
 		std::cout << "Parsing DAG structure of the proof..." << std::endl;
 
 	QRP_ClauseID empty_constraint_id;
@@ -52,7 +53,7 @@ bool ProofTranslator::translate() {
 		empty_constraint_id = parse_DAG_structure_Qute(qrp, parents_of);
 	}
 
-	if (verbose_output)
+	if (verbosity >= 1)
 		std::cout << "Done" << std::endl;
 
 	spare_QRP_IDs[0] = empty_constraint_id + 1;
@@ -144,6 +145,8 @@ bool ProofTranslator::translate() {
 
 	string line;
 	QRP_ClauseID temporary_parent_left = 0, temporary_resolvent = 0;
+
+	size_t threshold = 9999;
 
 	while (std::getline(qrp, line)) {
 		if (line[0] == 'r')
@@ -256,10 +259,10 @@ bool ProofTranslator::translate() {
 			}
 		}
 
-		/*if (grat_proof.size() > threshold) {
+		if (grat_proof.size() > threshold) {
 			std::cerr << "WARNING: GRAT proof now has " << grat_proof.size() << " entries." << std::endl;
 			threshold += (threshold) / 3;
-		}*/
+		}
 	}
 
 	grat_proof.push_back(5);
@@ -267,7 +270,7 @@ bool ProofTranslator::translate() {
 
 	write_grat_proof();
 
-	if (verbose_output) {
+	if (verbosity >= 2) {
 		display_grat_proof_human_readable();
 	}
 
@@ -344,8 +347,8 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 				var_phase = update_phase(pivot, phase_left, phase_right);
 			}
 			phase.insert({{resolvent, var}, var_phase});
-			if (verbose_output)
-				std::cerr << "Phase of " << var << " in " << resolvent << " is " << var_phase << std::endl;
+			if (verbosity >= 3)
+				std::cout << "Phase of " << var << " in " << resolvent << " is " << var_phase << std::endl;
 
 			NewVar var_eflit;
 			unordered_map<VarPhasePair, NewVar>::iterator vpit = eflit.find({var, var_phase});
@@ -434,8 +437,8 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 
 				eflit_shortcut[{-pivot, var_eflit}] = rup.num_clauses;
 			}
-			if (verbose_output)
-				std::cerr << "Eflit of " << var << " in " << resolvent << " is " << var_eflit << std::endl;
+			if (verbosity >= 3)
+				std::cout << "Eflit of " << var << " in " << resolvent << " is " << var_eflit << std::endl;
 		}
 		// carry over phases of already merged literals that are not being merged now
 		copy_phases(parent_left, resolvent);
@@ -1037,8 +1040,8 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 					if (var_data[var].depth < min_merged_depth)
 						min_merged_depth = var_data[var].depth;
 					merged_lits.push_back(lit);
-					if (verbose_output)
-						std::cout << lit << " is merged!\n";
+					//if (verbosity >= 3)
+					//	std::cout << lit << " is merged!\n";
 				}
 			}
 		}
@@ -1066,8 +1069,8 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 		std::cerr << "illegal merge\n";
 		return 0;
 	}
-	if (verbose_output && !merged_lits.empty())
-		std::cerr << "pivot for these merges: " << pivot << std::endl;
+	//if (verbosity >= 3 && !merged_lits.empty())
+	//	std::cerr << "pivot for these merges: " << pivot << std::endl;
 
 	/* Since reduced_lits was populated in sorted order, we can use has_literal on it,
 	 * to determine if a given literal was already collected for reduction if it's
@@ -1273,7 +1276,7 @@ void ProofTranslator::split_reduction_step(QRP_ClauseID id, vector<OldLit>& redu
 }
 
 vector<NewVar> ProofTranslator::shadow(QRP_ClauseID id) {
-	if (verbose_output && !merged_vars_in[id].empty()) {
+	if (verbosity >= 3 && !merged_vars_in[id].empty()) {
 		std::cout << "Shadow clause for step " << id << ":";
 	}
 	vector<int64_t> shadcls;
@@ -1281,12 +1284,12 @@ vector<NewVar> ProofTranslator::shadow(QRP_ClauseID id) {
 		int64_t ef_lit = get_eflit(lit, get_phase(id, lit));
 		if (ef_lit == lit || lit > 0) {
 			shadcls.push_back(ef_lit);
-			if (verbose_output && !merged_vars_in[id].empty()) {
+			if (verbosity >= 3 && !merged_vars_in[id].empty()) {
 				std::cout << " " << ef_lit << "(" << lit << ")";
 			}
 		}
 	}
-	if (verbose_output && !merged_vars_in[id].empty())
+	if (verbosity >= 3 && !merged_vars_in[id].empty())
 		std::cout << std::endl;
 	
 	return shadcls;
@@ -1395,126 +1398,4 @@ NewVar ProofTranslator::make_eflit(OldVar var, NewVar phase_var) {
 //		  IO
 // #################
 
-vector<vector<OldLit>> ProofTranslator::read_qdimacs() {
-	vector<vector<OldLit>> matrix;
-	string line;
-	ifstream qbf(qdimacs);
-
-	// discard everything that is not clauses
-	while (std::getline(qbf, line) && (line[0] == 'c' || line[0] == 'p' || line[0] == 'a' || line[0] == 'e')) {}
-	do {
-		if (!std::all_of(line.begin(), line.end(), isspace)) {
-			matrix.push_back({});
-			int32_t lit;
-			std::istringstream iss(line);
-			while(iss >> lit) {
-				if (lit != 0) {
-					matrix.back().push_back(lit);
-				}
-				else {
-					break;
-				}
-			}
-		}
-	} while (std::getline(qbf, line));		 
-	return matrix;
-}
-
-QRP_ClauseID ProofTranslator::read_proof_line(const char * line,
-		QRP_ClauseID& parent_left,
-		vector<QRP_ClauseID>& parents_right) {
-
-	char * tmp;
-	QRP_ClauseID id = strtoul(line, &tmp, 10);
-	clause_database[id] = {};
-
-	if (!proof_is_qrp) {
-		// skip Qute clause/term flag
-		strtoul(tmp, &tmp, 10);
-	}
-
-	OldLit lit;
-	while ((lit = strtol(tmp, &tmp, 10)) != 0) {
-		clause_database[id].push_back(lit);
-	}
-
-	parent_left = strtoul(tmp, &tmp, 10);
-
-	QRP_ClauseID parent_right;
-	if (parent_left) {
-		while ((parent_right = strtoul(tmp, &tmp, 10)) != 0) {
-			parents_right.push_back(parent_right);
-		}
-	}
-	return id;
-}
-
-void ProofTranslator::combine(string qdimacs, string certificate, string combined) {
-	ifstream qbf(qdimacs);
-	ifstream cert(certificate);
-	ClauseWriter comb(combined);
-
-	string line;
-	ClauseCNT num_clauses = 0;
-
-	do {
-		std::getline(qbf, line);
-	} while (line[0] == 'c');
-
-	do {
-		std::getline(cert, line);
-	} while (line[0] == 'c');
-
-	{
-		std::istringstream iss(line);
-		iss.ignore(6);
-		iss >> num_clauses;
-		iss >> num_clauses;
-	}
-	
-	//comb << "p cnf " << max_var << " " << num_clauses << "\n";
-	comb.ofs << "p cnf ____________________ ____________________\n";
-
-	do {
-		std::getline(qbf, line);
-	} while (line[0] == 'a' || line[0] == 'e');
-
-	vector<int32_t> clause;
-	vector<int32_t> top_level_clause;
-
-	size_t tseitin_idx = 0;
-	do {
-		if (!std::all_of(line.begin(), line.end(), isspace)) {
-			if (primary_type == 0) {
-				std::istringstream iss(line);
-				int32_t lit;
-				while (iss >> lit) {
-					if (lit != 0)
-						clause.push_back(lit);
-					else
-						break;
-				}
-				int32_t c = clause_tseitin_variables[tseitin_idx++];
-				comb.define_variable_clause(c, clause);
-				top_level_clause.push_back(-c);
-				clause.clear();
-			} else {
-				comb.ofs << line << "\n";
-				num_clauses++;
-			}
-		}
-	} while (std::getline(qbf, line));
-
-	if (primary_type == 0) {
-		comb.write_clause(top_level_clause);
-	}
-
-	while (std::getline(cert, line)) {
-		comb.ofs << line << "\n";
-	}
-
-	comb.ofs.seekp(6);
-	comb.ofs << std::setw(41) << std::left << std::to_string(max_var) + " " + std::to_string(num_clauses + comb.num_clauses) << "\n";
-
-}
 

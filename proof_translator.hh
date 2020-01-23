@@ -21,9 +21,7 @@
 // --------------------------------------
 
 #include "types.hh"
-#include "rfao_node.hh"
 #include "clause_writer.hh"
-#include "sorted_query_oracle.hh"
 
 using std::stack;
 using std::vector;
@@ -68,7 +66,7 @@ public:
 	// assuming existential primary type by default, i.e. a false formula
 	uint8_t primary_type = 1;
 	bool delinfo;
-	bool verbose_output;
+	int verbosity;
 	bool proof_is_qrp;
 	NewVar CONST_TRUE = 0, CONST_FALSE = 0;
 	QRP_ClauseID spare_QRP_IDs[2];
@@ -101,41 +99,41 @@ public:
 	inline NewVar get_fresh_variable() { return ++max_var; }
 	inline void discard_last_variable() { --max_var; }
 
-	ProofTranslator(const string& qrpfile, const string& qdimacs, bool verbose_output = false) :
+	ProofTranslator(const string& qrpfile, const string& qdimacs, int verbosity) :
 		cert(ClauseWriter(qrpfile + ".cert")),
 		rup(ClauseWriter(qrpfile + ".rup")),
 		gratfile(qrpfile + ".grat"),
 		qrpfile(qrpfile),
 		qdimacs(qdimacs),
 		delinfo(false),
-		verbose_output(verbose_output) {}
+		verbosity(verbosity) {}
 
 	vector<vector<OldLit>> read_qdimacs();
 
-	inline void write_grat_proof();
-	inline void display_grat_proof_human_readable();
+	void write_grat_proof();
+	void display_grat_proof_human_readable();
 
 	/* Warning: the following functions all assume that the underlying qrp ifstream is in a valid
 	 * state at the right position in order to extract the right information */
 
 	// skips all comment lines, returns the problem line (p qrp ...)
-	inline bool skip_comments(std::ifstream& qrp);
+	bool skip_comments(std::ifstream& qrp);
 
-	inline size_t parse_num_vars(const string& problem_line);
+	size_t parse_num_vars(const string& problem_line);
 
 	// returns a stream position at the and of the prefix (= beginning of the matrix)
-	inline std::streampos read_prefix(std::ifstream& qrp);
+	std::streampos read_prefix(std::ifstream& qrp);
 
 	// parses the DAG structure of the proof into parents_of, returns the id of the empty clause
-	inline QRP_ClauseID parse_DAG_structure_QRP(std::ifstream& qrp,
+	QRP_ClauseID parse_DAG_structure_QRP(std::ifstream& qrp,
 			unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of);
 
-	inline QRP_ClauseID parse_DAG_structure_Qute(std::ifstream& qrp,
+	QRP_ClauseID parse_DAG_structure_Qute(std::ifstream& qrp,
 			unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of);
 
-	inline bool is_SAT_proof(string& result_line);
+	bool is_SAT_proof(string& result_line);
 
-	inline unordered_map<QRP_ClauseID, QRP_ClauseID> find_core(
+	unordered_map<QRP_ClauseID, QRP_ClauseID> find_core(
 			QRP_ClauseID empty_constraint,
 			unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of);
 
@@ -149,8 +147,6 @@ public:
 	void combine(string qdimacs, string certificate, string combined);
 
 	// proof checking
-	
-	inline void sort_and_remove_duplicate_literals(vector<OldLit>& clause);
 	
 	bool record_axiom(QRP_ClauseID current_id);
 
@@ -198,241 +194,7 @@ public:
 
 
 
-inline void ProofTranslator::write_grat_proof() {
-	std::ofstream grat(gratfile, std::ios::binary);
-	for (auto rit = grat_proof.rbegin(); rit != grat_proof.rend(); ++rit) {
-		if (*rit < 0)
-			*rit = num_cnf_clauses + cert.num_clauses - *rit;
-		grat.write((char*)&(*rit), 4);
-	}
-	grat.close();
-}
 
-inline void ProofTranslator::display_grat_proof_human_readable() {
-	size_t i = 0;
-	while (i < grat_proof.size()) {
-		if (grat_proof[i] == 3) {
-			std::cout << "RUP " << grat_proof[++i] << ":";
-			while (grat_proof[++i] != 0) {
-				std::cout << " " << grat_proof[i];
-			}
-			std::cout << " CFLT: " << grat_proof[++i] << std::endl;
-			++i;
-		} else if (grat_proof[i] == 1) {
-			std::cout << "UNIT:";
-			while (grat_proof[++i] != 0) {
-				std::cout << " " << grat_proof[i];
-			}
-			std::cout << std::endl;
-			++i;
-		} else if (grat_proof[i] == 2) {
-			std::cout << "DEL:";
-			while (grat_proof[++i] != 0) {
-				std::cout << " " << grat_proof[i];
-			}
-			std::cout << std::endl;
-			++i;
-		} else if (grat_proof[i] == 5) {
-			std::cout << "CONFLICT: " << grat_proof[++i] << std::endl;
-			++i;
-		} else {
-			while (grat_proof[i++] != 0) {}
-		}
-	}
-}
-
-// skips all comments, then checks whether the input is a QRP, or a Qute-style proof
-inline bool ProofTranslator::skip_comments(std::ifstream& qrp) {
-	string line;
-	while (qrp.peek() == 'c') {
-		std::getline(qrp, line);
-	}
-	if (qrp.peek() == 'p') {
-		std::getline(qrp, line);
-		// QRP
-		return true;
-	} else if (qrp.peek() == 'a' || qrp.peek() == 'e') {
-		return false;
-	} else {
-		// handle syntax error (throw exception?)
-		return false;
-	}
-}
-
-inline size_t ProofTranslator::parse_num_vars(const string& problem_line) {
-	size_t max_var;
-	std::istringstream iss(problem_line);
-	iss.ignore(6);
-	iss >> max_var;
-	return max_var;
-}
-
-inline std::streampos ProofTranslator::read_prefix(std::ifstream& qrp) {
-	std::streampos matrix_begin = qrp.tellg();
-	string line;
-	char last_qtype = 'x';
-	char qtype = 'y';
-	uint32_t last_qdepth = 0;
-	
-	while (true) {
-
-		matrix_begin = qrp.tellg();
-		qtype = qrp.peek();
-		if (qtype != 'a' && qtype != 'e')
-			break;
-
-		if (qtype != last_qtype) {
-			last_qtype = qtype;
-			++last_qdepth;
-		}
-
-		OldVar var;
-		std::getline(qrp, line);
-		std::istringstream iss(line);
-		iss.ignore(2);
-
-		while (iss >> var) {
-			if (var == 0)
-				break;
-			if (var > max_var)
-				max_var = var;
-			var_data[var] = {last_qdepth, qtype == 'e'};
-		}
-	}
-	return matrix_begin;
-}
-
-inline QRP_ClauseID ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp,
-		unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of) {
-
-	string line;
-	QRP_ClauseID empty_constraint_id = 0;
-	int empty_constraint_type = 0;
-	while (empty_constraint_id == 0 && std::getline(qrp, line)) {
-
-		char * tmp_line;
-
-		QRP_ClauseID id = strtoul(line.c_str(), &tmp_line, 10);
-		parents_of[id] = {};
-
-		// skip Qute clause/term flag
-		int constraint_type = strtol(tmp_line, &tmp_line, 10);
-
-		long int first_literal_in_constraint = strtol(tmp_line, &tmp_line, 10);
-		if (first_literal_in_constraint == 0) {
-			// empty clause
-			empty_constraint_id = id;
-			empty_constraint_type = constraint_type;
-		} else {
-			tmp_line = strstr(tmp_line, " 0 ");
-			if (tmp_line == NULL) {
-				std::cerr << "Syntax error in step with the id " << id << std::endl;
-				return 0;
-			}
-			tmp_line += 3;
-		}
-
-		QRP_ClauseID parent = 0;
-		while ((parent = strtoul(tmp_line, &tmp_line, 10)) != 0) {
-			parents_of[id].push_back(parent);
-		}
-	}
-
-	primary_type = (empty_constraint_type == 0);
-
-	return empty_constraint_id;
-}
-
-inline QRP_ClauseID ProofTranslator::parse_DAG_structure_QRP(std::ifstream& qrp,
-		unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of) {
-
-	string line;
-	QRP_ClauseID empty_constraint_id = 0;
-	while (std::tolower(qrp.peek()) != 'r') {
-		std::getline(qrp, line);
-		char * tmp_line;
-
-		QRP_ClauseID id = strtoul(line.c_str(), &tmp_line, 10);
-		parents_of[id] = {};
-
-		long int first_literal_in_constraint = strtol(tmp_line, &tmp_line, 10);
-		if (first_literal_in_constraint == 0) {
-			// empty clause
-			empty_constraint_id = id;
-		} else {
-			tmp_line = strstr(tmp_line, " 0 ");
-			if (tmp_line == NULL) {
-				std::cerr << "Syntax error in step with the id " << id << std::endl;
-				return 0;
-			}
-			tmp_line += 3;
-		}
-
-		QRP_ClauseID parent = 0;
-		while ((parent = strtoul(tmp_line, &tmp_line, 10)) != 0) {
-			parents_of[id].push_back(parent);
-		}
-	}
-
-	return empty_constraint_id;
-}
-
-inline bool ProofTranslator::is_SAT_proof(string& result_line) {
-	std::transform(result_line.begin(), result_line.end(), result_line.begin(), tolower);
-	if (result_line == "r sat") {
-		return true;
-	}
-	// TODO: check whether result_line == "r unsat" ?
-	return false;
-}
-
-inline unordered_map<QRP_ClauseID, QRP_ClauseID> ProofTranslator::find_core(
-		QRP_ClauseID empty_constraint_id,
-		unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of) {
-
-	unordered_map<QRP_ClauseID, QRP_ClauseID> last_use_of;
-
-	stack<QRP_ClauseID, vector<QRP_ClauseID>> core_clauses;
-	core_clauses.push(empty_constraint_id);
-	last_use_of[empty_constraint_id] = 0;
-	while (!core_clauses.empty()) {
-		QRP_ClauseID current_id = core_clauses.top();
-		core_clauses.pop();
-		auto pit = parents_of.find(current_id);
-		if (pit != parents_of.end()) {
-			for (auto parent: pit->second) {
-				if (parent) {
-					auto it = last_use_of.find(parent);
-					if (it != last_use_of.end()) {
-						if (current_id > it->second) {
-							it->second = current_id;
-						}
-					} else {
-						last_use_of.insert({parent, current_id});
-						core_clauses.push(parent);
-					}
-				}
-			}
-		}
-	}
-
-	parents_of.clear();
-
-	return last_use_of;
-}
-
-void ProofTranslator::sort_and_remove_duplicate_literals(vector<OldLit>& clause) {
-	// sort and remove duplicate literals
-	sort(clause.begin(), clause.end(), compare_lits);
-	clause.resize(
-			std::distance(
-				clause.begin(),
-				std::unique(
-					clause.begin(),
-					clause.end())
-				)
-			);
-}
 
 template<typename T>
 inline

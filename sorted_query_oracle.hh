@@ -21,7 +21,20 @@ inline bool compare_lits(OldLit x, OldLit y) {
     return abs(x) < abs(y) || (abs(x) == abs(y) && x < y) ;
 }
 
-// assumes both vectors are sorted
+inline void sort_and_remove_duplicate_literals(vector<OldLit>& clause) {
+	// sort and remove duplicate literals
+	sort(clause.begin(), clause.end(), compare_lits);
+	clause.resize(
+			std::distance(
+				clause.begin(),
+				std::unique(
+					clause.begin(),
+					clause.end())
+				)
+			);
+}
+
+// assumes both vectors are sorted by sort_and_remove_duplicate_literals
 inline bool setequal(const vector<OldLit>& c1, const vector<OldLit>& c2) {
 	if (c1.size() != c2.size())
 		return false;

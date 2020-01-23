@@ -15,6 +15,19 @@ using std::string;
 bool has_unit_conclusion = false;
 bool has_empty_conclusion = false;
 
+int increase_verbosity_from_param(char * param) {
+	size_t length = strlen(param);
+	if (length < 2 || param[0] != '-') {
+		return 0;
+	}
+	for (size_t i = 1; i < length; ++i) {
+		if (param[i] != 'v') {
+			return 0;
+		}
+	}
+	return length - 1;
+}
+
 int main(int argc, char** argv) {
     string qrpfile = "";// argv[1];
     string qdimacs = "";// argv[2];
@@ -23,7 +36,7 @@ int main(int argc, char** argv) {
      * 
      * Actually, for gratchk, we always want deletion information! */
     //uint32_t delinfo = 0;
-	bool verbose_output = false;
+	int verbosity = 0;
 
     for (int i = 1; i < argc; i++) {
         /*if (strcmp(argv[i], "-d") == 0) {
@@ -33,8 +46,13 @@ int main(int argc, char** argv) {
                 return -1;
             }
             delinfo = strtoul(argv[i], nullptr, 10);
-        } else*/ if (strcmp(argv[i], "-v") == 0) {
-            verbose_output = true;
+        } else*/
+
+		int verbosity_increase = increase_verbosity_from_param(argv[i]);
+		if (verbosity_increase > 0) {
+			verbosity += verbosity_increase;
+		} else if (strcmp(argv[i], "-q") == 0) {
+            verbosity = -1;
         } else if (qrpfile.length() == 0) {
             qrpfile = argv[i];
         } else {
@@ -49,6 +67,6 @@ int main(int argc, char** argv) {
 
     //delinfo = 1;
 
-	ProofTranslator pt(qrpfile, qdimacs, verbose_output);
+	ProofTranslator pt(qrpfile, qdimacs, verbosity);
 	pt.translate();
 }
