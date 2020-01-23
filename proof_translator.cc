@@ -145,7 +145,7 @@ bool ProofTranslator::translate() {
 	string line;
 	QRP_ClauseID temporary_parent_left = 0, temporary_resolvent = 0;
 
-	size_t threshold = 99999;
+	size_t threshold = 999999;
 
 	while (std::getline(qrp, line)) {
 		if (line[0] == 'r')
@@ -260,13 +260,11 @@ bool ProofTranslator::translate() {
 			}
 		}
 
-		if (verbosity >= 1 && grat_proof.size() > threshold) {
-			std::cerr << "WARNING: GRAT proof now has " << grat_proof.size() << " entries." << std::endl;
-			if (threshold > 1500000000) {
-				print_statistics();
-				return 100;
+		if (verbosity >= 1) {
+			if (grat_proof.size() > threshold) {
+				std::cerr << "WARNING: GRAT proof now has " << grat_proof.size() << " entries." << std::endl;
+				threshold += (threshold) / 3;
 			}
-			threshold += (threshold) / 3;
 		}
 	}
 
@@ -520,9 +518,6 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 		
 		for (OldVar var : reduced_merged) {
 
-			++statistics.num_core_literal_reductions;
-			++statistics.num_core_merged_literal_reductions;
-
 			NewVar last_aux = auxg.back();
 			auxg.push_back(get_fresh_variable());
 			// define next_g = last_g | eflit(var, phase(id, var))
@@ -566,10 +561,13 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 
 			if (prop_pos.find(var) == prop_pos.end()) {
 				prop_pos[var] = {};
+				rfao_array_length[var] = 0;
 			}
 			if (prop_neg.find(var) == prop_neg.end()) {
 				prop_neg[var] = {};
 			}
+
+			++rfao_array_length[var];
 
 			/* out_var is the variable representing the yet unknown partial
 			 * countermodel circuit for var (by default var)
@@ -688,14 +686,20 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 		// handle the part with reduced merged literals
 		for (vector<OldVar>::reverse_iterator rit = reduced_merged.rbegin(); rit != reduced_merged.rend(); rit++) {
 
+			++statistics.num_core_literal_reductions;
+			++statistics.num_core_merged_literal_reductions;
+
 			OldVar var = *rit;
 
 			if (prop_pos.find(var) == prop_pos.end()) {
 				prop_pos[var] = {};
+				rfao_array_length[var] = 0;
 			}
 			if (prop_neg.find(var) == prop_neg.end()) {
 				prop_neg[var] = {};
 			}
+
+			rfao_array_length[var] += 2;
 
 			NewVar var_phase = get_phase(resolvent, var);
 			gvar = auxg.back();
@@ -800,9 +804,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			int32_t var = abs(lit);
 			GRAT_ClauseID delta = (lit > 0);
 
-			//auto prop_clause = prop.find(var);
-			//if (prop_clause != prop.end()) {
-			if (prop_pos[var].size() >= 5) {
+			if (prop_pos[var].size() >= 4) {
 
 				NewVar out_var = countermodel_out_var[var];
 
@@ -820,7 +822,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			} else {
 				prop_pos[var].push_back(running_grat_id + delta);
 			}
-			if (prop_neg[var].size() >= 5) {
+			if (prop_neg[var].size() >= 4) {
 
 				NewVar out_var = countermodel_out_var[var];
 
@@ -832,8 +834,8 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 				grat_proof.push_back(0);
 				grat_proof.push_back(running_grat_id + 1 - delta);
 
-				prop_pos[var].clear();
-				prop_pos[var].push_back(-rup.num_clauses);
+				prop_neg[var].clear();
+				prop_neg[var].push_back(-rup.num_clauses);
 				//prop_clause->second[1] = -rup.num_clauses;
 
 			} else {

@@ -88,6 +88,8 @@ public:
 		uint64_t num_core_variable_merges = 0;
 	} statistics;
 
+	unordered_map<OldVar, uint64_t> rfao_array_length;
+
 	inline void print_statistics() {
 		std::cout << "Number of core proof lines:        " << statistics.num_core_proof_lines               << std::endl;
 		std::cout << "Number of core axioms:             " << statistics.num_core_axioms                    << std::endl;
@@ -98,6 +100,21 @@ public:
 		std::cout << "                merged reductions: " << statistics.num_core_merged_literal_reductions << std::endl;
 		std::cout << "Number of core merge steps:        " << statistics.num_core_merge_steps               << std::endl;
 		std::cout << "Number of core variable merges:    " << statistics.num_core_variable_merges           << std::endl;
+		
+		vector<uint64_t> array_lengths;
+		for (auto entry : rfao_array_length) {
+			array_lengths.push_back(entry.second);
+		}
+
+		sort(array_lengths.begin(), array_lengths.end());
+
+		if (!array_lengths.empty()) {
+			std::cout << "Number of non-empty countermodel arrays: " << array_lengths.size()                          << std::endl;
+			std::cout << "Longest countermodel array length: " << array_lengths.back()                          << std::endl;
+			std::cout << "               shortest          : " << array_lengths[0]                              << std::endl;
+			std::cout << "               median            : " << array_lengths[array_lengths.size() / 2]       << std::endl;
+		}
+
 	}
 
 
