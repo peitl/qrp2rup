@@ -146,6 +146,10 @@ bool ProofTranslator::translate() {
 	QRP_ClauseID temporary_parent_left = 0, temporary_resolvent = 0;
 
 	size_t threshold = 999999;
+	// the following packing threshold seems to be optimal
+	// as soon as the prop sequence outgrows this length, it needs to be truncated by learning
+	// a new prop clause
+	prop_packing_threshold = 5;
 
 	while (std::getline(qrp, line)) {
 		if (line[0] == 'r')
@@ -591,7 +595,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 
 			if (lit < 0) {
 				// first pack the pertinent prop sequence if it is too long
-				if (prop_pos[var].size() >= 5)
+				if (prop_pos[var].size() >= prop_packing_threshold)
 					pack_prop_sequence(var, true);
 
 				cert.define_variable_clause<NewLit>(out_var, {-g, new_out});
@@ -606,7 +610,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 				}*/
 			} else {
 				// first pack the pertinent prop sequence if it is too long
-				if (prop_neg[var].size() >= 5)
+				if (prop_neg[var].size() >= prop_packing_threshold)
 					pack_prop_sequence(var, false);
 
 				cert.define_variable_term<NewLit>(out_var, {g, new_out});
@@ -740,9 +744,9 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			//auto prop_clause = prop.find(var);
 			
 			// first pack prop sequences if they are too long
-			if (prop_pos[var].size() >= 5)
+			if (prop_pos[var].size() >= prop_packing_threshold)
 				pack_prop_sequence(var, true);
-			if (prop_neg[var].size() >= 5)
+			if (prop_neg[var].size() >= prop_packing_threshold)
 				pack_prop_sequence(var, false);
 
 			rup.write_clause<NewLit>({gvar, -var_phase});

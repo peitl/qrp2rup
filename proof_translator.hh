@@ -121,18 +121,18 @@ public:
 
 	/* *** GRAT stuff ***
 	 *
-	 * instead of the RFAO arrays, we now only keep track of two clause ids, which
-	 * encode the current derived equivalence between a variable and its partial
+	 * instead of the RFAO arrays, we now only keep track of two sequences ofclause ids,
+	 * which encode the current derived equivalence between a variable and its partial
 	 * circuit.
 	 *
-	 * prop holds these two clauses, and in fact whenever prop has an entry for var,
-	 * then the two clauses whose ids it holds are
-	 *
-	 * (var, -countermodel_out_var[var]) and (-var, countermodel_out_var[var])
+	 * when countermodel_out_var[var] is set to true, prop_pos[var] delivers that to var,
+	 * and when it's set to false, prop_neg[var] delivers that to var. In this case, prop_*[var]
+	 * must be propagated starting from the end.
 	 *
 	 * *** */
 	unordered_map<OldVar, vector<GRAT_ClauseID>> prop_pos;
 	unordered_map<OldVar, vector<GRAT_ClauseID>> prop_neg;
+	size_t prop_packing_threshold = 5;
 	unordered_map<QRP_ClauseID, GRAT_ClauseID> get_grat_id;
 	unordered_map<OldVar, NewVar> countermodel_out_var;
 	GRAT_ClauseID conflict_clause;
