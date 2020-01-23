@@ -140,13 +140,12 @@ bool ProofTranslator::translate() {
 		}
 	}
 
-	num_reductions = 0, num_merges = 0;
 	last_orig_clause_seen = 0;
 
 	string line;
 	QRP_ClauseID temporary_parent_left = 0, temporary_resolvent = 0;
 
-	size_t threshold = 9999;
+	size_t threshold = 99999;
 
 	while (std::getline(qrp, line)) {
 		if (line[0] == 'r')
@@ -160,6 +159,8 @@ bool ProofTranslator::translate() {
 			clause_database.erase(current_id);
 			continue;
 		}
+
+		++statistics.num_core_proof_lines;
 
 		if (primary_type == 0) {
 			negate(clause_database[current_id]);
@@ -259,8 +260,12 @@ bool ProofTranslator::translate() {
 			}
 		}
 
-		if (grat_proof.size() > threshold) {
+		if (verbosity >= 1 && grat_proof.size() > threshold) {
 			std::cerr << "WARNING: GRAT proof now has " << grat_proof.size() << " entries." << std::endl;
+			if (threshold > 1500000000) {
+				print_statistics();
+				return 100;
+			}
 			threshold += (threshold) / 3;
 		}
 	}
@@ -283,14 +288,16 @@ bool ProofTranslator::translate() {
 	cert.ofs << std::setw(41) << std::left <<
 		std::to_string(max_var) + " " + std::to_string(cert.num_clauses) << "\n";
 
-	//std::cerr << "Reductions: " << num_reductions << "\nMerges: " << num_merges << std::endl;
-
 	cert.ofs.close();
 	rup.ofs.close();
 
 	combine(qdimacs, qrpfile + ".cert", qrpfile + ".cnf");
 
-	std::cout << "OK" << std::endl;
+	if (verbosity >= 1)
+		print_statistics();
+
+	if (verbosity >= 0)
+		std::cout << "OK" << std::endl;
 
 	return true;
 }
@@ -301,6 +308,8 @@ bool ProofTranslator::translate() {
 int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 											QRP_ClauseID parent_right,
 											QRP_ClauseID resolvent) {
+
+	++statistics.num_core_resolutions;
 
 	vector<OldLit> merged_lits;
 	vector<OldLit> reduced_lits;
@@ -457,18 +466,23 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 	vector<GRAT_ClauseID> merge_propagation_sequence_left;
 	vector<GRAT_ClauseID> merge_propagation_sequence_right;
 	for (NewLit merged_lit : merged_lits) {
+
+		++statistics.num_core_variable_merges;
+
 		NewVar merged_eflit = get_eflit(merged_lit, get_phase(resolvent, merged_lit));
 		merge_propagation_sequence_left.push_back(-eflit_shortcut[{pivot, merged_eflit}]);
 		merge_propagation_sequence_right.push_back(-eflit_shortcut[{-pivot, merged_eflit}]);
 	}
 
 	if (!merged_lits.empty()) {
-		++num_merges;
+		++statistics.num_core_merge_steps;
 	}
 
 	/* if there are any reduced literals, create the corresponding g_i variables
 	 * and update the countermodel circuits, else just print the shadow clause. */
 	if (!reduced_lits.empty()) {
+
+		++statistics.num_core_reduction_steps;
 
 		// initialize all g-variables
 		int64_t g = get_fresh_variable();
@@ -505,6 +519,10 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 		vector<GRAT_ClauseID> gvar_definition_conflict_clause;
 		
 		for (OldVar var : reduced_merged) {
+
+			++statistics.num_core_literal_reductions;
+			++statistics.num_core_merged_literal_reductions;
+
 			NewVar last_aux = auxg.back();
 			auxg.push_back(get_fresh_variable());
 			// define next_g = last_g | eflit(var, phase(id, var))
@@ -541,8 +559,17 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 
 		for (OldLit lit : reduced_simple) {
 
-			++num_reductions;
+			++statistics.num_core_literal_reductions;
+			++statistics.num_core_simple_literal_reductions;
+
 			OldVar var = abs(lit);
+
+			if (prop_pos.find(var) == prop_pos.end()) {
+				prop_pos[var] = {};
+			}
+			if (prop_neg.find(var) == prop_neg.end()) {
+				prop_neg[var] = {};
+			}
 
 			/* out_var is the variable representing the yet unknown partial
 			 * countermodel circuit for var (by default var)
@@ -562,17 +589,24 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			if (lit < 0) {
 				cert.define_variable_clause<NewLit>(out_var, {-g, new_out});
 				reduction_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
-				auto prop_clause = prop.find(var);
+				reduction_propagation_sequence.insert(reduction_propagation_sequence.end(),
+						prop_pos[var].rbegin(),
+						prop_pos[var].rend());
+
+				/*auto prop_clause = prop.find(var);
 				if (prop_clause != prop.end()) {
 					reduction_propagation_sequence.push_back(prop_clause->second[0]);
-				}
+				}*/
 			} else {
 				cert.define_variable_term<NewLit>(out_var, {g, new_out});
 				reduction_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
-				auto prop_clause = prop.find(var);
+				reduction_propagation_sequence.insert(reduction_propagation_sequence.end(),
+						prop_neg[var].rbegin(),
+						prop_neg[var].rend());
+				/*auto prop_clause = prop.find(var);
 				if (prop_clause != prop.end()) {
 					reduction_propagation_sequence.push_back(prop_clause->second[1]);
-				}
+				}*/
 			}
 			countermodel_out_var[var] = new_out;
 		} 
@@ -653,7 +687,16 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 
 		// handle the part with reduced merged literals
 		for (vector<OldVar>::reverse_iterator rit = reduced_merged.rbegin(); rit != reduced_merged.rend(); rit++) {
+
 			OldVar var = *rit;
+
+			if (prop_pos.find(var) == prop_pos.end()) {
+				prop_pos[var] = {};
+			}
+			if (prop_neg.find(var) == prop_neg.end()) {
+				prop_neg[var] = {};
+			}
+
 			NewVar var_phase = get_phase(resolvent, var);
 			gvar = auxg.back();
 			auxg.pop_back();
@@ -677,7 +720,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			cert.define_variable_term<NewLit>(out_var, {f1, new_out1});
 			cert.define_variable_clause<NewLit>(new_out1, {-f2, new_out2});
 
-			auto prop_clause = prop.find(var);
+			//auto prop_clause = prop.find(var);
 
 			rup.write_clause<NewLit>({gvar, -var_phase});
 
@@ -689,9 +732,10 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			}
 			grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 9); // f1 := false
 			grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 5); // out_var := false
-			if (prop_clause != prop.end()) {
+			grat_proof.insert(grat_proof.end(), prop_neg[var].rbegin(),	prop_neg[var].rend());
+			/*if (prop_clause != prop.end()) {
 				grat_proof.push_back(prop_clause->second[1]);
-			}
+			}*/
 			grat_proof.push_back(eflit_def[get_eflit(var, var_phase)] + 1);
 			grat_proof.push_back(0);
 			grat_proof.push_back(gvar_definition_conflict_clause.back());
@@ -710,9 +754,10 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 2);  // new_out1 := true
 			grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 10); // f1 := true
 			grat_proof.push_back(cert.num_clauses + num_cnf_clauses - 3);  // out_var := true
-			if (prop_clause != prop.end()) {
+			grat_proof.insert(grat_proof.end(), prop_pos[var].rbegin(), prop_pos[var].rend());
+			/*if (prop_clause != prop.end()) {
 				grat_proof.push_back(prop_clause->second[0]);
-			}
+			}*/
 			grat_proof.push_back(eflit_def[get_eflit(var, var_phase)] + 0);
 			grat_proof.push_back(0);
 			grat_proof.push_back(gvar_definition_conflict_clause.back());
@@ -724,6 +769,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			countermodel_out_var[var] = new_out2;
 			
 			gvar_definition_conflict_clause.pop_back();
+
 		}
 		
 		/* add the clauses that short-circuit the RFAO array to the last partial circuit
@@ -754,29 +800,44 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			int32_t var = abs(lit);
 			GRAT_ClauseID delta = (lit > 0);
 
-			auto prop_clause = prop.find(var);
-			if (prop_clause != prop.end()) {
+			//auto prop_clause = prop.find(var);
+			//if (prop_clause != prop.end()) {
+			if (prop_pos[var].size() >= 5) {
 
 				NewVar out_var = countermodel_out_var[var];
 
 				rup.write_clause<NewLit>({var, -out_var});
 				grat_proof.push_back(3);
 				grat_proof.push_back(-rup.num_clauses);
-				grat_proof.push_back(prop_clause->second[0]);
+				grat_proof.insert(grat_proof.end(), prop_pos[var].begin(), prop_pos[var].end());
+				//grat_proof.push_back(prop_clause->second[0]);
 				grat_proof.push_back(0);
 				grat_proof.push_back(running_grat_id + delta);
-				prop_clause->second[0] = -rup.num_clauses;
+
+				prop_pos[var].clear();
+				prop_pos[var].push_back(-rup.num_clauses);
+				//prop_clause->second[0] = -rup.num_clauses;
+			} else {
+				prop_pos[var].push_back(running_grat_id + delta);
+			}
+			if (prop_neg[var].size() >= 5) {
+
+				NewVar out_var = countermodel_out_var[var];
 
 				rup.write_clause<NewLit>({-var, out_var});
 				grat_proof.push_back(3);
 				grat_proof.push_back(-rup.num_clauses);
-				grat_proof.push_back(prop_clause->second[1]);
+				grat_proof.insert(grat_proof.end(), prop_neg[var].begin(), prop_neg[var].end());
+				//grat_proof.push_back(prop_clause->second[1]);
 				grat_proof.push_back(0);
 				grat_proof.push_back(running_grat_id + 1 - delta);
-				prop_clause->second[1] = -rup.num_clauses;
+
+				prop_pos[var].clear();
+				prop_pos[var].push_back(-rup.num_clauses);
+				//prop_clause->second[1] = -rup.num_clauses;
 
 			} else {
-				prop[var] = {{running_grat_id + delta, running_grat_id + 1 - delta}};
+				prop_neg[var].push_back(running_grat_id + 1 - delta);
 			}
 			running_grat_id += 3;
 		}
@@ -786,7 +847,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 		// update prop clauses for reduced merged literals
 		for (vector<OldVar>::reverse_iterator rit = reduced_merged.rbegin(); rit != reduced_merged.rend(); rit++) {
 			OldVar var = *rit;
-			auto prop_clause = prop.find(var);
+			//auto prop_clause = prop.find(var);
 
 			NewVar out_var = countermodel_out_var[var];
 
@@ -795,33 +856,47 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			grat_proof.push_back(running_grat_id + 4);
 			grat_proof.push_back(0);
 
-			rup.write_clause<NewLit>({var, -out_var});
-			grat_proof.push_back(3);
-			grat_proof.push_back(-rup.num_clauses);
-			grat_proof.push_back(running_grat_id + 11);
-			if (prop_clause != prop.end()) {
-				grat_proof.push_back(prop_clause->second[0]);
-				prop_clause->second[0] = -rup.num_clauses;
-			}
-			grat_proof.push_back(0);
-			grat_proof.push_back(running_grat_id + 9);
+			if (prop_pos[var].size() >= 4) {
+				rup.write_clause<NewLit>({var, -out_var});
+				grat_proof.push_back(3);
+				grat_proof.push_back(-rup.num_clauses);
+				grat_proof.push_back(running_grat_id + 11);
+				grat_proof.insert(grat_proof.end(), prop_pos[var].begin(), prop_pos[var].end());
+				/*if (prop_clause != prop.end()) {
+					grat_proof.push_back(prop_clause->second[0]);
+					prop_clause->second[0] = -rup.num_clauses;
+				}*/
+				grat_proof.push_back(0);
+				grat_proof.push_back(running_grat_id + 9);
 
-			rup.write_clause<NewLit>({-var, out_var});
-			grat_proof.push_back(3);
-			grat_proof.push_back(-rup.num_clauses);
-			grat_proof.push_back(running_grat_id + 12);
-			if (prop_clause != prop.end()) {
-				grat_proof.push_back(prop_clause->second[1]);
-				prop_clause->second[1] = -rup.num_clauses;
+				prop_pos[var].clear();
+				prop_pos[var].push_back(-rup.num_clauses);
+			} else {
+				prop_pos[var].push_back(running_grat_id + 9);
+				prop_pos[var].push_back(running_grat_id + 11);
 			}
-			grat_proof.push_back(0);
-			grat_proof.push_back(running_grat_id + 8);
+
+			if (prop_neg[var].size() >= 4) {
+				rup.write_clause<NewLit>({-var, out_var});
+				grat_proof.push_back(3);
+				grat_proof.push_back(-rup.num_clauses);
+				grat_proof.push_back(running_grat_id + 12);
+				grat_proof.insert(grat_proof.end(), prop_neg[var].begin(), prop_neg[var].end());
+				/*if (prop_clause != prop.end()) {
+					grat_proof.push_back(prop_clause->second[1]);
+					prop_clause->second[1] = -rup.num_clauses;
+				}*/
+				grat_proof.push_back(0);
+				grat_proof.push_back(running_grat_id + 8);
+
+				prop_neg[var].clear();
+				prop_neg[var].push_back(-rup.num_clauses);
+			} else {
+				prop_neg[var].push_back(running_grat_id + 8);
+				prop_neg[var].push_back(running_grat_id + 12);
+			}
 
 			running_grat_id += 12;
-
-			if (prop_clause == prop.end()) {
-				prop[var] = {{-(rup.num_clauses - 1), -rup.num_clauses}};
-			}
 		}
 
 		reduced_lits.clear();
@@ -903,6 +978,9 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 }
 
 bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {
+
+	++statistics.num_core_axioms;
+
 	if (primary_type == 0) {
 		// initial term, careful, it's already negated
 		rup.write_clause(clause_database[current_id]);

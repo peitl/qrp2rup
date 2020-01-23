@@ -71,12 +71,36 @@ public:
 	NewVar CONST_TRUE = 0, CONST_FALSE = 0;
 	QRP_ClauseID spare_QRP_IDs[2];
 	ClauseCNT num_cnf_clauses = 0;
-	uint64_t num_reductions;
-	uint64_t num_merges;
 	size_t last_orig_clause_seen;
 	vector<vector<OldLit>> matrix;
 	vector<bool> tautological;
 	vector<OldVar> clause_tseitin_variables = {};
+
+	struct proof_stats {
+		uint64_t num_core_proof_lines = 0;
+		uint64_t num_core_axioms = 0;
+		uint64_t num_core_resolutions = 0;
+		uint64_t num_core_reduction_steps = 0;
+		uint64_t num_core_literal_reductions = 0;
+		uint64_t num_core_simple_literal_reductions = 0;
+		uint64_t num_core_merged_literal_reductions = 0;
+		uint64_t num_core_merge_steps = 0;
+		uint64_t num_core_variable_merges = 0;
+	} statistics;
+
+	inline void print_statistics() {
+		std::cout << "Number of core proof lines:        " << statistics.num_core_proof_lines               << std::endl;
+		std::cout << "Number of core axioms:             " << statistics.num_core_axioms                    << std::endl;
+		std::cout << "Number of core resolution steps:   " << statistics.num_core_resolutions               << std::endl;
+		std::cout << "Number of core reduction steps:    " << statistics.num_core_reduction_steps           << std::endl;
+		std::cout << "Number of core literal reductions: " << statistics.num_core_literal_reductions        << std::endl;
+		std::cout << "      of those, simple reductions: " << statistics.num_core_simple_literal_reductions << std::endl;
+		std::cout << "                merged reductions: " << statistics.num_core_merged_literal_reductions << std::endl;
+		std::cout << "Number of core merge steps:        " << statistics.num_core_merge_steps               << std::endl;
+		std::cout << "Number of core variable merges:    " << statistics.num_core_variable_merges           << std::endl;
+	}
+
+
 
 	/* *** GRAT stuff ***
 	 *
@@ -90,7 +114,8 @@ public:
 	 * (var, -countermodel_out_var[var]) and (-var, countermodel_out_var[var])
 	 *
 	 * *** */
-	unordered_map<OldVar, array<GRAT_ClauseID, 2>> prop;
+	unordered_map<OldVar, vector<GRAT_ClauseID>> prop_pos;
+	unordered_map<OldVar, vector<GRAT_ClauseID>> prop_neg;
 	unordered_map<QRP_ClauseID, GRAT_ClauseID> get_grat_id;
 	unordered_map<OldVar, NewVar> countermodel_out_var;
 	GRAT_ClauseID conflict_clause;
