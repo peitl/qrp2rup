@@ -947,7 +947,7 @@ void ProofTranslator::pack_prop_sequence(OldVar var, bool pos) {
 		prop_pos[var].clear();
 		prop_pos[var].push_back(-rup.num_clauses);
 	} else {
-		rup.write_clause<NewLit>({var, -out_var});
+		rup.write_clause<NewLit>({-var, out_var});
 		grat_proof.push_back(3);
 		grat_proof.push_back(-rup.num_clauses);
 		grat_proof.insert(grat_proof.end(), prop_neg[var].begin(), prop_neg[var].end() - 1);
