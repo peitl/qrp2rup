@@ -200,8 +200,14 @@ bool ProofTranslator::translate() {
 					}
 
 					// TODO: implement proper exception handling
-					if (result != 0)
+					if (result != 0) {
+						std::cout << "intermediate resolution failed" << std::endl;
+						std::cout << "learned clause id: " << current_id << std::endl;
+						std::cout << "parent_right: " << parents_right[i] <<
+							" (" << (i+2) << ordinal_suffix(i+2) <<
+							" in that derivation)" << std::endl;
 						return result;
+					}
 
 					++i;
 					temporary_parent_left = temporary_resolvent;
@@ -1001,6 +1007,26 @@ bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {
 		}
 		grat_proof.push_back(0);
 		grat_proof.push_back(num_cnf_clauses);
+
+		// On January 25th 2020, Qute did not record the existential reduction it performed
+		// on an initial term in case when further resolutions followed immediately. This
+		// led to some proofs being reported invalid since a literal that should have been
+		// removed right after model generation remained, and later clashed resulting in
+		// an invalid merge. Therefore, we perform a safety reduction here, and in case
+		// the reduction is in fact recorded later in the proof, the GRAT id will simply be
+		// rerouted.
+		
+		QRP_ClauseID reduct_id = spare_QRP_IDs[0];
+
+		// resolving with an empty constraint is in fact reduction
+		clause_database[reduct_id] = resolve(clause_database[current_id], {});
+
+		translate_resolution_step(current_id, 0, reduct_id);
+
+		clause_database[current_id] = clause_database[reduct_id];
+		get_grat_id[current_id] = get_grat_id[reduct_id];
+		clause_database.erase(reduct_id);
+		get_grat_id.erase(reduct_id);
 	} else {
 		// input clause
 		
@@ -1126,7 +1152,13 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 		return 0;
 	}
 	if (min_merged_depth < var_data[abs(pivot)].depth) {
-		std::cerr << "illegal merge\n";
+		std::cerr << "illegal merge" << std::endl;
+		std::cerr << "pivot: " << pivot << std::endl;
+		std::cerr << "illegally merged variables: ";
+		for (OldLit lit : merged_lits)
+			if (var_data[abs(lit)].depth < var_data[abs(pivot)].depth)
+				std::cerr << lit << " ";
+		std::cerr << std::endl;
 		return 0;
 	}
 	//if (verbosity >= 3 && !merged_lits.empty())

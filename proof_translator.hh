@@ -269,4 +269,14 @@ inline void ProofTranslator::forget(QRP_ClauseID clause_id) {
 	get_grat_id.erase(clause_id);
 }
 
+inline string ordinal_suffix(size_t n) {
+	if (n == 1)
+		return "st";
+	if (n == 2)
+		return "nd";
+	if (n == 3)
+		return "rd";
+	return "th";
+}
+
 #endif
