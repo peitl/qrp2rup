@@ -2,63 +2,24 @@
 
 using std::ifstream;
 
-void ProofTranslator::write_grat_proof() {
-	std::ofstream grat(gratfile, std::ios::binary);
-	for (auto rit = grat_proof.rbegin(); rit != grat_proof.rend(); ++rit) {
-		if (*rit < 0)
-			*rit = num_cnf_clauses + cert.num_clauses - *rit;
-		grat.write((char*)&(*rit), 4);
-	}
-	grat.close();
-}
-
-void ProofTranslator::display_grat_proof_human_readable() {
-	size_t i = 0;
-	while (i < grat_proof.size()) {
-		if (grat_proof[i] == 3) {
-			std::cout << "RUP " << grat_proof[++i] << ":";
-			while (grat_proof[++i] != 0) {
-				std::cout << " " << grat_proof[i];
-			}
-			std::cout << " CFLT: " << grat_proof[++i] << std::endl;
-			++i;
-		} else if (grat_proof[i] == 1) {
-			std::cout << "UNIT:";
-			while (grat_proof[++i] != 0) {
-				std::cout << " " << grat_proof[i];
-			}
-			std::cout << std::endl;
-			++i;
-		} else if (grat_proof[i] == 2) {
-			std::cout << "DEL:";
-			while (grat_proof[++i] != 0) {
-				std::cout << " " << grat_proof[i];
-			}
-			std::cout << std::endl;
-			++i;
-		} else if (grat_proof[i] == 5) {
-			std::cout << "CONFLICT: " << grat_proof[++i] << std::endl;
-			++i;
-		} else {
-			while (grat_proof[i++] != 0) {}
-		}
-	}
-}
-
 // skips all comments, then checks whether the input is a QRP, or a Qute-style proof
 bool ProofTranslator::skip_comments(std::ifstream& qrp) {
 	string line;
 	while (qrp.peek() == 'c') {
 		std::getline(qrp, line);
+		if (extract_core)
+			core_writer << line << std::endl;
 	}
 	if (qrp.peek() == 'p') {
 		std::getline(qrp, line);
+		if (extract_core)
+			core_writer << line << std::endl;
 		// QRP
 		return true;
 	} else if (qrp.peek() == 'a' || qrp.peek() == 'e') {
 		return false;
 	} else {
-		// handle syntax error (throw exception?)
+		// TODO: handle syntax error (throw exception?)
 		return false;
 	}
 }
@@ -92,6 +53,8 @@ std::streampos ProofTranslator::read_prefix(std::ifstream& qrp) {
 
 		OldVar var;
 		std::getline(qrp, line);
+		if (extract_core)
+			core_writer << line << std::endl;
 		std::istringstream iss(line);
 		iss.ignore(2);
 
@@ -282,7 +245,8 @@ QRP_ClauseID ProofTranslator::read_proof_line(const char * line,
 void ProofTranslator::combine(string qdimacs, string certificate, string combined) {
 	ifstream qbf(qdimacs);
 	ifstream cert(certificate);
-	ClauseWriter comb(combined);
+	//ClauseWriter comb(combined);
+	CNFCircuit comb(combined);
 
 	string line;
 	ClauseCNT num_clauses = 0;
@@ -325,7 +289,7 @@ void ProofTranslator::combine(string qdimacs, string certificate, string combine
 						break;
 				}
 				int32_t c = clause_tseitin_variables[tseitin_idx++];
-				comb.define_variable_clause(c, clause);
+				comb.or_gate(c, clause);
 				top_level_clause.push_back(-c);
 				clause.clear();
 			} else {
@@ -336,7 +300,12 @@ void ProofTranslator::combine(string qdimacs, string certificate, string combine
 	} while (std::getline(qbf, line));
 
 	if (primary_type == 0) {
-		comb.write_clause(top_level_clause);
+		// TODO: make this more elegant
+		//comb.write_clause(top_level_clause);
+		for (OldLit lit : top_level_clause) {
+			comb.ofs << lit << " ";
+		}
+		comb.ofs << " 0\n";
 	}
 
 	while (std::getline(cert, line)) {

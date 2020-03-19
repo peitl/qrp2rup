@@ -22,6 +22,8 @@
 
 #include "types.hh"
 #include "clause_writer.hh"
+#include "cnf_circuit.hh"
+#include "grat_manager.hh"
 
 using std::stack;
 using std::vector;
@@ -31,9 +33,11 @@ using std::unordered_map;
 
 class ProofTranslator {
 public:
-	ClauseWriter cert;
+	// TODO: change to proper polymorphism via Circuit*
+	CNFCircuit cert;
 	ClauseWriter rup;
-	vector<GRAT_ClauseID> grat_proof;
+	GRATManager gman;
+	ofstream core_writer;
 
 	string gratfile;
 	string qrpfile;
@@ -41,6 +45,7 @@ public:
 	
 	unordered_map<OldVar, qdata> var_data;
 	unordered_map<QRP_ClauseID, vector<OldVar>> clause_database;
+	unordered_map<QRP_ClauseID, QRP_ClauseID> last_use_of;
 
 	//unordered_map<OldVar, vector<RFAO_node>> countermodel;
 	
@@ -67,6 +72,7 @@ public:
 	uint8_t primary_type = 1;
 	bool delinfo;
 	int verbosity;
+	bool extract_core;
 	bool proof_is_qrp;
 	NewVar CONST_TRUE = 0, CONST_FALSE = 0;
 	QRP_ClauseID spare_QRP_IDs[2];
@@ -141,19 +147,17 @@ public:
 	inline NewVar get_fresh_variable() { return ++max_var; }
 	inline void discard_last_variable() { --max_var; }
 
-	ProofTranslator(const string& qrpfile, const string& qdimacs, int verbosity) :
-		cert(ClauseWriter(qrpfile + ".cert")),
+	ProofTranslator(const string& qrpfile, const string& qdimacs, int verbosity, bool extract_core) :
+		cert(CNFCircuit(qrpfile + ".cert")),
 		rup(ClauseWriter(qrpfile + ".rup")),
 		gratfile(qrpfile + ".grat"),
 		qrpfile(qrpfile),
 		qdimacs(qdimacs),
-		delinfo(false),
-		verbosity(verbosity) {}
+		delinfo(true),
+		verbosity(verbosity),
+   		extract_core(extract_core)	{}
 
 	vector<vector<OldLit>> read_qdimacs();
-
-	void write_grat_proof();
-	void display_grat_proof_human_readable();
 
 	/* Warning: the following functions all assume that the underlying qrp ifstream is in a valid
 	 * state at the right position in order to extract the right information */

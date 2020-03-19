@@ -6,11 +6,16 @@
 
 /* there are only a few old variables, so it is OK to use a 32-bit integer for them,
  * but just to stay on the safe side, we have a separate type for newly created variables
- * and that is currently set to a 64-bit integer. */
-typedef int32_t OldVar;
-typedef int32_t OldLit;
-typedef int64_t NewVar;
-typedef int64_t NewLit;
+ * and that is currently set to a 64-bit integer.
+ *
+ * Actually no, fuck that. */
+
+typedef int32_t Var;
+typedef int32_t Lit;
+typedef Var OldVar;
+typedef Lit OldLit;
+typedef Var NewVar;
+typedef Lit NewLit;
 
 typedef uint32_t QRP_ClauseID;
 typedef int32_t GRAT_ClauseID;

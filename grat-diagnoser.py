@@ -38,6 +38,12 @@ def load_rup(filename):
 
 def is_unit(clause_id):
     global culprit
+    if clause_id <= 0 or clause_id >= len(clauses):
+        print("Invalid clause access: %d (out of bounds)" % clause_id)
+        return 0
+    if clauses[clause_id] == None:
+        print("Invalid clause access: %d (clause was probably deleted)" % clause_id)
+        return 0
     unit_literal = 0
     assignment = permanent_assignment | temporary_assignment
     for lit in clauses[clause_id]:
@@ -63,6 +69,12 @@ def is_unit(clause_id):
 
 def is_empty(clause_id):
     global culprit
+    if clause_id <= 0 or clause_id >= len(clauses):
+        print("Invalid clause access: %d (out of bounds)" % clause_id)
+        return 0
+    if clauses[clause_id] == None:
+        print("Invalid clause access: %d (clause was probably deleted)" % clause_id)
+        return 0
     assignment = permanent_assignment | temporary_assignment
     for lit in clauses[clause_id]:
         if lit in assignment:
@@ -79,7 +91,7 @@ def is_empty(clause_id):
 
 
 def diagnose(rup, grat):
-    global permanent_assignment, temporary_assignment
+    global permanent_assignment, temporary_assignment, culprit
     next_rup_clause = 0
     grat_head = 0
     conflict_reached = False
@@ -107,6 +119,8 @@ def diagnose(rup, grat):
                 if unit_literal == 0:
                     print("Failed while trying to claim a clause unit to prove %d RUP" % current_id)
                     bug = True
+                    if culprit == 0:
+                        culprit = len(clauses) + 1
                     break
                 else:
                     temporary_assignment.add(unit_literal)
@@ -123,6 +137,19 @@ def diagnose(rup, grat):
                     temporary_assignment = set()
                     clauses.append(rup[next_rup_clause])
                     next_rup_clause += 1
+        elif grat[grat_head] == 2:
+            grat_head += 1
+            while grat[grat_head] != 0:
+                if clauses[grat[grat_head]] != None:
+                    clauses[grat[grat_head]] = None
+                else:
+                    if clause_id <= 0 or clause_id >= len(clauses):
+                        print("Invalid clause access: %d (out of bounds)" % clause_id)
+                    elif clauses[clause_id] == None:
+                        print("Invalid clause access: %d (clause was probably deleted)" % clause_id)
+                    bug = True
+                    break
+                grat_head += 1
         elif grat[grat_head] == 5:
             grat_head += 1
             if grat[grat_head] == 0:

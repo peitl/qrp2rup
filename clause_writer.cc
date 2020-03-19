@@ -9,6 +9,11 @@ void ClauseWriter::write_clause(const std::vector<T>& clause) {
     ++num_clauses;
 }
 
+template void ClauseWriter::write_clause<OldLit>(const vector<OldLit>& clause);
+// must be uncommented when NewLit becomes different from OldLit
+//template void ClauseWriter::write_clause<NewLit>(const vector<NewLit>& clause);
+
+/*
 template <typename T>
 void ClauseWriter::define_variable_clause(NewVar new_var, typename std::vector<T>::const_iterator begin, typename std::vector<T>::const_iterator end) {
     for (typename std::vector<T>::const_iterator it = begin; it != end; it++) {
@@ -73,7 +78,6 @@ void ClauseWriter::define_variable_term(NewVar new_var, const std::vector<T>& te
 
 // template functions need to be either defined in the header, or at least declared with concrete types
 
-template void ClauseWriter::write_clause<OldLit>(const vector<OldLit>& clause);
 
 template void ClauseWriter::define_variable_clause<OldLit>(NewVar new_var, typename vector<OldLit>::const_iterator begin, typename vector<OldLit>::const_iterator end);
 template void ClauseWriter::define_variable_term  <OldLit>(NewVar new_var, typename vector<OldLit>::const_iterator begin, typename vector<OldLit>::const_iterator end);
@@ -82,11 +86,10 @@ template void ClauseWriter::define_variable_term  <OldLit>(NewVar new_var, typen
 template void ClauseWriter::define_variable_clause<OldLit>(NewVar new_var, const std::vector<OldLit>& clause);
 template void ClauseWriter::define_variable_term  <OldLit>(NewVar new_var, const std::vector<OldLit>& clause);
 
-template void ClauseWriter::write_clause<NewLit>(const vector<NewLit>& clause);
-
 template void ClauseWriter::define_variable_clause<NewLit>(NewVar new_var, typename vector<NewLit>::const_iterator begin, typename vector<NewLit>::const_iterator end);
 template void ClauseWriter::define_variable_term  <NewLit>(NewVar new_var, typename vector<NewLit>::const_iterator begin, typename vector<NewLit>::const_iterator end);
 template void ClauseWriter::define_variable_clause<NewLit>(NewVar new_var, typename vector<NewLit>::const_reverse_iterator begin, typename vector<NewLit>::const_reverse_iterator end);
 template void ClauseWriter::define_variable_term  <NewLit>(NewVar new_var, typename vector<NewLit>::const_reverse_iterator begin, typename vector<NewLit>::const_reverse_iterator end);
 template void ClauseWriter::define_variable_clause<NewLit>(NewVar new_var, const std::vector<NewLit>& clause);
 template void ClauseWriter::define_variable_term  <NewLit>(NewVar new_var, const std::vector<NewLit>& clause);
+*/
