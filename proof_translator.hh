@@ -39,7 +39,6 @@ public:
 	GRATManager gman;
 	ofstream core_writer;
 
-	string gratfile;
 	string qrpfile;
 	string qdimacs;
 	
@@ -150,7 +149,7 @@ public:
 	ProofTranslator(const string& qrpfile, const string& qdimacs, int verbosity, bool extract_core) :
 		cert(CNFCircuit(qrpfile + ".cert")),
 		rup(ClauseWriter(qrpfile + ".rup")),
-		gratfile(qrpfile + ".grat"),
+		gman(qrpfile + ".grat"),
 		qrpfile(qrpfile),
 		qdimacs(qdimacs),
 		delinfo(true),

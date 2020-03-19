@@ -276,7 +276,7 @@ bool ProofTranslator::translate() {
 
 	gman.conflict_clause(conflict_clause);
 
-	gman.write_grat_proof(num_cnf_clauses + cert.num_clauses, gratfile);
+	gman.write_grat_proof(num_cnf_clauses + cert.num_clauses);
 
 	if (verbosity >= 2) {
 		gman.display_grat_proof_human_readable();
