@@ -10,12 +10,11 @@ using std::string;
 class GRATManager {
 	public:
 	vector<GRAT_ClauseID> grat_proof;
-	size_t capacity = 1000;
-	size_t max_capacity = 1000000000;
+	size_t max_capacity;
 	uint32_t auxiliary_files = 0;
 	const string gratfile;
 
-	GRATManager(string gratfile) : gratfile(gratfile) {};
+	GRATManager(string gratfile, size_t max_capacity) : max_capacity(max_capacity), gratfile(gratfile) {};
 
 	void open_proof();
 

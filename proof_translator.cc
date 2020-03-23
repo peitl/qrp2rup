@@ -146,7 +146,8 @@ bool ProofTranslator::translate() {
 	string line;
 	QRP_ClauseID temporary_parent_left = 0, temporary_resolvent = 0;
 
-	size_t threshold = 999999;
+	size_t threshold_increment = 1;
+	size_t threshold = 1;
 	// the following packing threshold seems to be optimal
 	// as soon as the prop sequence outgrows this length, it needs to be truncated by learning
 	// a new prop clause
@@ -261,16 +262,17 @@ bool ProofTranslator::translate() {
 			no_delete.insert(current_id);
 		}
 
+		if (gman.grat_proof.size() > gman.max_capacity) {
+			gman.dump_buffer();
+		}
+
 		if (verbosity >= 1) {
-			if (gman.grat_proof.size() > threshold) {
-				std::cerr << "WARNING: GRAT proof now has " << gman.grat_proof.size() << " entries." << std::endl;
-				threshold += (threshold) / 3;
+			if (statistics.num_core_proof_lines >= threshold) {
+				std::cerr << statistics.num_core_proof_lines << " processed." << std::endl;
+				std::cerr << "GRAT proof now has " << gman.grat_proof.size() << " entries." << std::endl;
+				threshold += threshold_increment;
+				//++threshold_increment;
 			}
-			/*if (current_id == 32185) {
-				std::cout << "Final GRAT proof size: " << grat_proof.size() << std::endl;
-				print_statistics();
-				return 100;
-			}*/
 		}
 	}
 

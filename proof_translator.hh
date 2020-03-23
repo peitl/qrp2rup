@@ -149,7 +149,7 @@ public:
 	ProofTranslator(const string& qrpfile, const string& qdimacs, int verbosity, bool extract_core) :
 		cert(CNFCircuit(qrpfile + ".cert")),
 		rup(ClauseWriter(qrpfile + ".rup")),
-		gman(qrpfile + ".grat"),
+		gman(qrpfile + ".grat", 1000000000),
 		qrpfile(qrpfile),
 		qdimacs(qdimacs),
 		delinfo(true),
