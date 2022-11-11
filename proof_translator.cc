@@ -716,7 +716,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			// new_out := f1 & ( -f2 | ... )
 			NewVar new_out1 = get_fresh_variable();
 			NewVar new_out2 = get_fresh_variable();
-			cert.or_gate(out_var, {f1, new_out1});
+			cert.and_gate(out_var, {f1, new_out1});
 			cert.or_gate(new_out1, {-f2, new_out2});
 
 			//auto prop_clause = prop.find(var);
