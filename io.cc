@@ -1,4 +1,5 @@
 #include "proof_translator.hh"
+#include <iomanip>
 
 using std::ifstream;
 
@@ -93,7 +94,8 @@ QRP_ClauseID ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp,
 		} else {
 			tmp_line = strstr(tmp_line, " 0 ");
 			if (tmp_line == NULL) {
-				std::cerr << "Syntax error in step with the id " << id << std::endl;
+				std::cerr << "Qute-proof syntax error: expected a 0 token (offending line shown below)" << std::endl;
+				std::cerr << line << std::endl;
 				return 0;
 			}
 			tmp_line += 3;
@@ -106,6 +108,10 @@ QRP_ClauseID ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp,
 	}
 
 	primary_type = (empty_constraint_type == 0);
+
+	if (empty_constraint_id == 0) {
+		std::cerr << "Error: no empty constraint found" << std::endl;
+	}
 
 	return empty_constraint_id;
 }
@@ -129,7 +135,8 @@ QRP_ClauseID ProofTranslator::parse_DAG_structure_QRP(std::ifstream& qrp,
 		} else {
 			tmp_line = strstr(tmp_line, " 0 ");
 			if (tmp_line == NULL) {
-				std::cerr << "Syntax error in step with the id " << id << std::endl;
+				std::cerr << "QRP syntax error: expected a 0 token (offending line shown below)" << std::endl;
+				std::cerr << line << std::endl;
 				return 0;
 			}
 			tmp_line += 3;
@@ -139,6 +146,10 @@ QRP_ClauseID ProofTranslator::parse_DAG_structure_QRP(std::ifstream& qrp,
 		while ((parent = strtoul(tmp_line, &tmp_line, 10)) != 0) {
 			parents_of[id].push_back(parent);
 		}
+	}
+
+	if (empty_constraint_id == 0) {
+		std::cerr << "Error: no empty constraint found" << std::endl;
 	}
 
 	return empty_constraint_id;
@@ -159,7 +170,7 @@ unordered_map<QRP_ClauseID, QRP_ClauseID> ProofTranslator::find_core(
 
 	unordered_map<QRP_ClauseID, QRP_ClauseID> last_use_of;
 
-	stack<QRP_ClauseID, vector<QRP_ClauseID>> core_clauses;
+	std::stack<QRP_ClauseID, vector<QRP_ClauseID>> core_clauses;
 	core_clauses.push(empty_constraint_id);
 	last_use_of[empty_constraint_id] = 0;
 	while (!core_clauses.empty()) {

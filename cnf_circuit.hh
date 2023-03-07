@@ -31,6 +31,8 @@ class CNFCircuit : public Circuit {
 
 	virtual void equiv_gate(NewVar output, OldVar input1, NewVar input2);
 	virtual void ite_gate(NewVar output, OldLit query, NewVar val_false, NewVar val_true);
+
+	virtual void close_circuit(NewVar max_var);
 };
 
 #endif

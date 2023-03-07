@@ -55,7 +55,7 @@ void GRATManager::conflict_clause(GRAT_ClauseID clause) {
 
 void GRATManager::dump_buffer() {
 	std::ofstream aux_grat(gratfile + std::to_string(auxiliary_files), std::ios::binary);
-	aux_grat.write((char*)&(*grat_proof.begin()), 4 * grat_proof.size());
+	aux_grat.write((char*)&(*grat_proof.begin()), sizeof(GRAT_ClauseID) * grat_proof.size());
 	aux_grat.close();
 	++auxiliary_files;
 	grat_proof.clear();
@@ -67,6 +67,7 @@ void GRATManager::read_buffer() {
 	aux_grat.seekg(0, std::ios::end);
     size_t size = aux_grat.tellg();
     aux_grat.seekg(0, std::ios::beg);
+	grat_proof.resize(size / sizeof(GRAT_ClauseID));
 	aux_grat.read((char*)&(*grat_proof.begin()), size);
 	aux_grat.close();
 }
@@ -75,7 +76,7 @@ void GRATManager::write_buffer_backwards(std::ofstream& grat, ClauseCNT total_cn
 	for (auto rit = grat_proof.rbegin(); rit != grat_proof.rend(); ++rit) {
 		if (*rit < 0)
 			*rit = total_cnf_clauses - *rit;
-		grat.write((char*)&(*rit), 4);
+		grat.write((char*)&(*rit), sizeof(GRAT_ClauseID));
 	}
 }
 
@@ -90,6 +91,8 @@ void GRATManager::write_grat_proof(ClauseCNT total_cnf_clauses) {
 	grat.close();
 }
 
+// WARNING: this will display only the part of the proof currently in the buffer
+// the intended use is for debugging, so for small proofs only, anyway
 void GRATManager::display_grat_proof_human_readable() {
 	size_t i = 0;
 	while (i < grat_proof.size()) {

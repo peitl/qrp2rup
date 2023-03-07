@@ -9,8 +9,6 @@
 
 #include "proof_translator.hh"
 
-#include <ctime>
-
 using std::string;
 
 bool has_unit_conclusion = false;

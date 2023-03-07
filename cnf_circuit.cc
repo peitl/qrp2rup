@@ -1,6 +1,6 @@
 #include "cnf_circuit.hh"
-/*
-*/
+#include <iomanip>
+
 void CNFCircuit::or_gate(NewVar output, vector<NewLit>::const_iterator begin,
 										vector<NewLit>::const_iterator end) {
     for (std::vector<NewLit>::const_iterator it = begin; it != end; it++) {
@@ -63,10 +63,6 @@ void CNFCircuit::and_gate(NewVar output, const vector<NewLit>& inputs) {
 
 // output = (input1 == input2)
 void CNFCircuit::equiv_gate(NewVar output, OldVar input1, NewVar input2) {
-	//cert.write_clause<NewLit>({-new_eflit, -var,  phase_var});
-	//cert.write_clause<NewLit>({-new_eflit,	var, -phase_var});
-	//cert.write_clause<NewLit>({ new_eflit,	var,  phase_var});
-	//cert.write_clause<NewLit>({ new_eflit, -var, -phase_var});
 	ofs << -output << " " << -input1 << " " <<   input2 << " 0\n";
 	ofs << -output << " " <<  input1 << " " <<  -input2 << " 0\n";
 	ofs <<  output << " " <<  input1 << " " <<   input2 << " 0\n";
@@ -76,13 +72,18 @@ void CNFCircuit::equiv_gate(NewVar output, OldVar input1, NewVar input2) {
 
 // if (query) {output = val_true} else {output = val_false}
 void CNFCircuit::ite_gate(NewVar output, OldLit query, NewVar val_false, NewVar val_true) {
-	//cert.write_clause<NewLit>({ pivot, -phase_left ,  phi});
-	//cert.write_clause<NewLit>({ pivot,	phase_left , -phi});
-	//cert.write_clause<NewLit>({-pivot, -phase_right,  phi});
-	//cert.write_clause<NewLit>({-pivot,	phase_right, -phi});
 	ofs <<  query << " " << -val_false << " " <<   output << " 0\n";
 	ofs <<  query << " " <<  val_false << " " <<  -output << " 0\n";
 	ofs << -query << " " << -val_true  << " " <<   output << " 0\n";
 	ofs << -query << " " <<  val_true  << " " <<  -output << " 0\n";
 	num_clauses += 4;
+}
+
+void CNFCircuit::close_circuit(NewVar max_var) {
+	// seek to the beginning of cnf and update the problem line
+	ofs.seekp(6);
+	ofs << std::setw(41) << std::left <<
+		std::to_string(max_var) + " " + std::to_string(num_clauses) << "\n";
+
+	ofs.close();
 }

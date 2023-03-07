@@ -1,8 +1,9 @@
 #include "proof_translator.hh"
 #include "sorted_query_oracle.hh"
+#include "defaults.hh"
+#include <iomanip>
 
 using std::ifstream;
-using std::array;
 
 bool ProofTranslator::translate() {
 
@@ -24,6 +25,8 @@ bool ProofTranslator::translate() {
 	proof_is_qrp = skip_comments(qrp);
 
 	if (verbosity >= 1) {
+		std::cout << "--- qrp2rup     ------------------" << std::endl;
+		std::cout << std::endl;
 		if (proof_is_qrp)
 			std::cout << "QRP format detected." << std::endl;
 		else
@@ -42,7 +45,9 @@ bool ProofTranslator::translate() {
 	unordered_map<QRP_ClauseID, vector<QRP_ClauseID>> parents_of;
 
 	if (verbosity >= 1)
-		std::cout << "Parsing DAG structure of the proof..." << std::endl;
+		std::cout << "Parsing the DAG structure of the proof..." << std::flush;
+
+	clock_t begin = clock();
 
 	QRP_ClauseID empty_constraint_id;
 	if (proof_is_qrp) {
@@ -56,8 +61,21 @@ bool ProofTranslator::translate() {
 		empty_constraint_id = parse_DAG_structure_Qute(qrp, parents_of);
 	}
 
-	if (verbosity >= 1)
-		std::cout << "Done" << std::endl;
+	if (empty_constraint_id == 0) {
+		std::cerr << "FAIL" << std::endl;
+		cert.ofs.close();
+		rup.ofs.close();
+		if (extract_core)
+			core_writer.close();
+		return false;
+	}
+
+	clock_t end = clock();
+
+	if (verbosity >= 1) {
+		std::cout << " done (" << std::fixed << std::showpoint << std::setprecision(2) <<double(end-begin) / CLOCKS_PER_SEC << "s)" << std::endl;
+		std::cout << std::endl;
+	}
 
 	spare_QRP_IDs[0] = empty_constraint_id + 1;
 	spare_QRP_IDs[1] = empty_constraint_id + 2;
@@ -91,25 +109,23 @@ bool ProofTranslator::translate() {
 	qrp.seekg(matrix_begin);
 
 	// read and translate the actual proof
-
-	//grat_proof = {6, 0};
-	gman.open_proof();
-	conflict_clause = 0;
+	begin = clock();
 
 	// define an auxiliary variable that holds the value 1
 	CONST_TRUE = get_fresh_variable();
 	CONST_FALSE = -CONST_TRUE;
 	cert.and_gate(CONST_TRUE, {});
-	//grat_proof.push_back(1);
-	//grat_proof.push_back(num_cnf_clauses + cert.num_clauses);
-	//grat_proof.push_back(0);
-	gman.unit_clause(num_cnf_clauses + cert.num_clauses);
+
+	//grat_proof = {6, 0};
+	gman.open_proof();
+	conflict_clause = 0;
+	gman.unit_clause(num_cnf_clauses + cert.num_clauses); // declare CONST_TRUE unit
 
 	if (primary_type == 0) {
 		// the following can happen:
-		// Suppose the true QBF F has a tautological clause C, C will likely be discarded in
-		// preprocessing by the QBF solver. Then the solver comes up with an initial term T that
-		// doesn't hit C (which is OK, because C is no longer in the matrix, however T will not be
+		// Suppose the true QBF F has a tautological clause C that is discarded in
+		// preprocessing by the QBF solver. Later, the solver comes up with an initial term T that
+		// doesn't hit C, which is OK, because C is no longer in the matrix, but T will not be
 		// verified correctly. Therefore we first derive unit clauses that say that every
 		// tautological clause is always satisfied.
 		GRAT_ClauseID current_clause = 1;
@@ -146,12 +162,8 @@ bool ProofTranslator::translate() {
 	string line;
 	QRP_ClauseID temporary_parent_left = 0, temporary_resolvent = 0;
 
-	size_t threshold_increment = 1;
+	size_t last_threshold = 1;
 	size_t threshold = 1;
-	// the following packing threshold seems to be optimal
-	// as soon as the prop sequence outgrows this length, it needs to be truncated by learning
-	// a new prop clause
-	prop_packing_threshold = 5;
 
 	while (std::getline(qrp, line)) {
 		if (line[0] == 'r') {
@@ -163,6 +175,8 @@ bool ProofTranslator::translate() {
 		QRP_ClauseID parent_left;
 		vector<QRP_ClauseID> parents_right;
 		QRP_ClauseID current_id = read_proof_line(line.c_str(), parent_left, parents_right);
+
+		++statistics.num_proof_lines;
 
 		if (last_use_of.find(current_id) == last_use_of.end()) {
 			clause_database.erase(current_id);
@@ -266,12 +280,13 @@ bool ProofTranslator::translate() {
 			gman.dump_buffer();
 		}
 
-		if (verbosity >= 1) {
+		if (verbosity >= 2) {
 			if (statistics.num_core_proof_lines >= threshold) {
-				std::cerr << statistics.num_core_proof_lines << " processed." << std::endl;
-				std::cerr << "GRAT proof now has " << gman.grat_proof.size() << " entries." << std::endl;
-				threshold += threshold_increment;
-				//++threshold_increment;
+				std::cerr << "INFO: " << statistics.num_core_proof_lines << " core proof lines processed.";
+				std::cerr << " The GRAT proof buffer now has " << gman.grat_proof.size() << " entries." << std::endl;
+				size_t new_threshold = threshold + last_threshold;
+				last_threshold = threshold;
+				threshold = new_threshold;
 			}
 		}
 	}
@@ -288,12 +303,7 @@ bool ProofTranslator::translate() {
 	// TODO: implement different types of encoding (quadratic one-sided, multi-gates)
 	// now handled by the circuit class, legacy code is stored in circuit.hh 
 
-	// seek to the beginning of cnf and update the problem line
-	cert.ofs.seekp(6);
-	cert.ofs << std::setw(41) << std::left <<
-		std::to_string(max_var) + " " + std::to_string(cert.num_clauses) << "\n";
-
-	cert.ofs.close();
+	cert.close_circuit(max_var);
 	rup.ofs.close();
 	core_writer.close();
 
@@ -302,8 +312,19 @@ bool ProofTranslator::translate() {
 	if (verbosity >= 1)
 		print_statistics();
 
-	if (verbosity >= 0)
-		std::cout << "OK" << std::endl;
+	end = clock();
+	double t = ((double) end - begin) / CLOCKS_PER_SEC;
+
+	if (verbosity >= 1) {
+		std::cout << "---  TIME STATS ------------------" << std::endl;
+		std::cout << std::endl;
+		std::cout << "Proof translated in " << std::fixed << std::showpoint << std::setprecision(2) << t << " seconds" << std::endl;
+		std::cout << std::endl;
+	}
+
+	if (verbosity >= 0) {
+		std::cout << "OK"  << std::endl;
+	}
 
 	return true;
 }
@@ -583,7 +604,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 
 			if (lit < 0) {
 				// first pack the pertinent prop sequence if it is too long
-				if (prop_pos[var].size() >= prop_packing_threshold)
+				if (prop_pos[var].size() >= PROP_PACKING_THRESHOLD)
 					pack_prop_sequence(var, true);
 
 				cert.or_gate(out_var, {-g, new_out});
@@ -598,7 +619,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 				}*/
 			} else {
 				// first pack the pertinent prop sequence if it is too long
-				if (prop_neg[var].size() >= prop_packing_threshold)
+				if (prop_neg[var].size() >= PROP_PACKING_THRESHOLD)
 					pack_prop_sequence(var, false);
 
 				cert.and_gate(out_var, {g, new_out});
@@ -722,9 +743,9 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			//auto prop_clause = prop.find(var);
 			
 			// first pack prop sequences if they are too long
-			if (prop_pos[var].size() >= prop_packing_threshold)
+			if (prop_pos[var].size() >= PROP_PACKING_THRESHOLD)
 				pack_prop_sequence(var, true);
-			if (prop_neg[var].size() >= prop_packing_threshold)
+			if (prop_neg[var].size() >= PROP_PACKING_THRESHOLD)
 				pack_prop_sequence(var, false);
 
 			rup.write_clause<NewLit>({gvar, -var_phase});

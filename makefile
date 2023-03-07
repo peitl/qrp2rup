@@ -14,7 +14,7 @@ $(EXE): $(OBJS)
 
 qrp2rup.o: qrp2rup.cc proof_translator.o cnf_circuit.o clause_writer.o io.o grat_manager.o
 
-proof_translator.o: proof_translator.cc proof_translator.hh sorted_query_oracle.hh 
+proof_translator.o: proof_translator.cc proof_translator.hh sorted_query_oracle.hh defaults.hh
 
 io.o: io.cc proof_translator.hh types.hh
 
@@ -22,7 +22,7 @@ cnf_circuit.o: cnf_circuit.cc cnf_circuit.hh circuit.hh
 
 clause_writer.o: clause_writer.cc clause_writer.hh types.hh
 
-grat_manager.o: grat_manager.cc grat_manager.hh
+grat_manager.o: grat_manager.cc grat_manager.hh defaults.hh
 
 clean:
 	rm -v $(OBJS) $(EXE)

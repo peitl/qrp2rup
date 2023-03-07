@@ -2,12 +2,12 @@
 #define _PROOF_TRANSLATOR_H_
 
 #include <cstdlib>
+#include <iomanip>
 #include <string.h>
 
 #include <string>
 #include <fstream>
 #include <sstream>
-#include <iomanip>
 #include <limits>
 
 #include <stack>
@@ -25,9 +25,9 @@
 #include "cnf_circuit.hh"
 #include "grat_manager.hh"
 
-using std::stack;
+#include "defaults.hh"
+
 using std::vector;
-using std::array;
 using std::unordered_set;
 using std::unordered_map;
 
@@ -82,6 +82,7 @@ public:
 	vector<OldVar> clause_tseitin_variables = {};
 
 	struct proof_stats {
+		uint64_t num_proof_lines = 0;
 		uint64_t num_core_proof_lines = 0;
 		uint64_t num_core_axioms = 0;
 		uint64_t num_core_resolutions = 0;
@@ -96,7 +97,14 @@ public:
 	unordered_map<OldVar, uint64_t> rfao_array_length;
 
 	inline void print_statistics() {
-		std::cout << "Number of core proof lines:        " << statistics.num_core_proof_lines               << std::endl;
+		double relative_core_size_percent = (100.0 * (double) statistics.num_core_proof_lines) / statistics.num_proof_lines;
+
+		std::cout << std::endl;
+		std::cout << "--- PROOF STATS ------------------"  << std::endl;
+		std::cout << std::endl;
+		std::cout << "Number of core proof lines:        " << statistics.num_core_proof_lines               <<
+			std::setprecision(1) << " (" << relative_core_size_percent << "% of the original "
+			<< statistics.num_proof_lines << " lines)"               << std::endl;
 		std::cout << "Number of core axioms:             " << statistics.num_core_axioms                    << std::endl;
 		std::cout << "Number of core resolution steps:   " << statistics.num_core_resolutions               << std::endl;
 		std::cout << "Number of core reduction steps:    " << statistics.num_core_reduction_steps           << std::endl;
@@ -105,6 +113,7 @@ public:
 		std::cout << "                merged reductions: " << statistics.num_core_merged_literal_reductions << std::endl;
 		std::cout << "Number of core merge steps:        " << statistics.num_core_merge_steps               << std::endl;
 		std::cout << "Number of core variable merges:    " << statistics.num_core_variable_merges           << std::endl;
+		std::cout << std::endl;
 		
 		vector<uint64_t> array_lengths;
 		for (auto entry : rfao_array_length) {
@@ -114,10 +123,13 @@ public:
 		sort(array_lengths.begin(), array_lengths.end());
 
 		if (!array_lengths.empty()) {
+			std::cout << "--- MODEL STATS ------------------"  << std::endl;
+			std::cout << std::endl;
 			std::cout << "Number of non-empty countermodel arrays: " << array_lengths.size()                          << std::endl;
-			std::cout << "Longest countermodel array length: " << array_lengths.back()                          << std::endl;
-			std::cout << "               shortest          : " << array_lengths[0]                              << std::endl;
-			std::cout << "               median            : " << array_lengths[array_lengths.size() / 2]       << std::endl;
+			std::cout << "Longest countermodel array length:       " << array_lengths.back()                          << std::endl;
+			std::cout << "               shortest          :       " << array_lengths[0]                              << std::endl;
+			std::cout << "               median            :       " << array_lengths[array_lengths.size() / 2]       << std::endl;
+			std::cout << std::endl;
 		}
 
 	}
@@ -137,7 +149,6 @@ public:
 	 * *** */
 	unordered_map<OldVar, vector<GRAT_ClauseID>> prop_pos;
 	unordered_map<OldVar, vector<GRAT_ClauseID>> prop_neg;
-	size_t prop_packing_threshold = 5;
 	unordered_map<QRP_ClauseID, GRAT_ClauseID> get_grat_id;
 	unordered_map<OldVar, NewVar> countermodel_out_var;
 	GRAT_ClauseID conflict_clause;
@@ -149,7 +160,7 @@ public:
 	ProofTranslator(const string& qrpfile, const string& qdimacs, int verbosity, bool extract_core) :
 		cert(CNFCircuit(qrpfile + ".cert")),
 		rup(ClauseWriter(qrpfile + ".rup")),
-		gman(qrpfile + ".grat", 1000000000),
+		gman(qrpfile + ".grat", GRAT_BUFFER_SIZE),
 		qrpfile(qrpfile),
 		qdimacs(qdimacs),
 		delinfo(true),
