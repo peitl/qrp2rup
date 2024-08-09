@@ -1,7 +1,9 @@
 #include "proof_translator.hh"
 #include "sorted_query_oracle.hh"
 #include "defaults.hh"
+#include <climits>
 #include <iomanip>
+#include <limits>
 
 using std::ifstream;
 
@@ -9,8 +11,8 @@ bool ProofTranslator::translate() {
 
 	ifstream qrp(qrpfile);
 
-	if (extract_core)
-		core_writer.open(qrpfile + ".core");
+	/*if (extract_core)
+		core_writer.open(qrpfile + ".core");*/
 
 	/* TODO: Implement various modes; the advantage is that with some assumptions
 	 * on the proof structure, we can avoid memory overhead and even produce slightly
@@ -49,26 +51,43 @@ bool ProofTranslator::translate() {
 
 	clock_t begin = clock();
 
-	QRP_ClauseID empty_constraint_id;
+	QRP_ClauseID empty_constraint_id = 0;
+	vector<QRP_ClauseID> empty_constraint_ids;
 	if (proof_is_qrp) {
 		empty_constraint_id = parse_DAG_structure_QRP(qrp, parents_of);
 		string result_line;
 		std::getline(qrp, result_line);
 		if (is_SAT_proof(result_line))
-			primary_type = 0;
+			primary_type = 1; // universal is primary
+		empty_constraint_ids.push_back(empty_constraint_id);
 	} else {
 		// this version also sets primary_type
-		empty_constraint_id = parse_DAG_structure_Qute(qrp, parents_of);
+		empty_constraint_ids = parse_DAG_structure_Qute(qrp, parents_of);
 	}
 
-	if (empty_constraint_id == 0) {
+	if (empty_constraint_ids.empty()) {
 		std::cerr << "FAIL" << std::endl;
 		cert.ofs.close();
 		rup.ofs.close();
-		if (extract_core)
-			core_writer.close();
+		/*if (extract_core)
+			core_writer.close();*/
 		return false;
 	}
+
+	statistics.num_empty_constraints = empty_constraint_ids.size();
+	if (extract_core) {
+		for (QRP_ClauseID eid : empty_constraint_ids) {
+			core_writers.push_back({});
+			core_writers.back().open(qrpfile + ".core." + std::to_string(eid));
+			for (const string& pline : prefix_lines) {
+				core_writers.back() << pline << std::endl;
+			}
+		}
+	}
+
+	// the last empty constraint, but possibly not the only one (for enumeration proofs)
+	empty_constraint_id = empty_constraint_ids.back();
+	constraint_type.resize(empty_constraint_id+1, 0);
 
 	clock_t end = clock();
 
@@ -81,28 +100,30 @@ bool ProofTranslator::translate() {
 	spare_QRP_IDs[1] = empty_constraint_id + 2;
 
 	// load the formula from the QDIMACS file, it's necessary in every case
-	matrix = read_qdimacs();
-	num_cnf_clauses = matrix.size();
+	matrix = read_qdimacs(); // sets have_formula accordingly
+	if (have_formula) {
+		num_cnf_clauses = matrix.size();
 
-	if (primary_type == 0) {
-		// recalculate num_cnf_clauses
-		for (auto& c : matrix) {
-			num_cnf_clauses += c.size();
-			clause_tseitin_variables.push_back(get_fresh_variable());
-		}
-		// top level clause
-		++num_cnf_clauses;
-	} else {
-		// in the unsat case, we need to sort the clauses of the matrix and remove duplicates
-		// for efficient comparisons 
-		// however, careful, because in the sat case, they must not be sorted!
-		for (auto& c : matrix) {
-			sort(c.begin(), c.end(), compare_lits);
-			c.resize(std::distance(c.begin(), std::unique(c.begin(), c.end())));
+		if (primary_type == 1) {
+			// recalculate num_cnf_clauses
+			for (auto& c : matrix) {
+				num_cnf_clauses += c.size();
+				clause_tseitin_variables.push_back(get_fresh_variable());
+			}
+			// top level clause
+			++num_cnf_clauses;
+		} else {
+			// in the unsat case, we need to sort the clauses of the matrix and remove duplicates
+			// for efficient comparisons 
+			// however, careful, because in the sat case, they must not be sorted!
+			for (auto& c : matrix) {
+				sort(c.begin(), c.end(), compare_lits);
+				c.resize(std::distance(c.begin(), std::unique(c.begin(), c.end())));
+			}
 		}
 	}
 
-	last_use_of = find_core(empty_constraint_id, parents_of);
+	last_use_of = find_core(empty_constraint_ids, parents_of);
 	
 	// END FIRST PASS	---------------------------------
 	qrp.clear();
@@ -112,16 +133,18 @@ bool ProofTranslator::translate() {
 	begin = clock();
 
 	// define an auxiliary variable that holds the value 1
-	CONST_TRUE = get_fresh_variable();
+	//CONST_TRUE = get_fresh_variable();
+	CONST_TRUE = 1 << 30;
 	CONST_FALSE = -CONST_TRUE;
-	cert.and_gate(CONST_TRUE, {});
+	//cert.and_gate(CONST_TRUE, {});
+	//std::cout << "CONST_TRUE = " << CONST_TRUE << std::endl;
 
 	//grat_proof = {6, 0};
 	gman.open_proof();
 	conflict_clause = 0;
-	gman.unit_clause(num_cnf_clauses + cert.num_clauses); // declare CONST_TRUE unit
+	//gman.unit_clause(num_cnf_clauses + cert.num_clauses); // declare CONST_TRUE unit
 
-	if (primary_type == 0) {
+	if (have_formula && primary_type == 1) {
 		// the following can happen:
 		// Suppose the true QBF F has a tautological clause C that is discarded in
 		// preprocessing by the QBF solver. Later, the solver comes up with an initial term T that
@@ -166,15 +189,18 @@ bool ProofTranslator::translate() {
 	size_t threshold = 1;
 
 	while (std::getline(qrp, line)) {
-		if (line[0] == 'r') {
+		// not sure what to do about this in the case of multiple cores
+		/*if (line[0] == 'r') {
 			if (extract_core)
 				core_writer << line << std::endl;
 			continue;
-		}
+		}*/
 
 		QRP_ClauseID parent_left;
 		vector<QRP_ClauseID> parents_right;
-		QRP_ClauseID current_id = read_proof_line(line.c_str(), parent_left, parents_right);
+		bool ctype;
+		QRP_ClauseID current_id = read_proof_line(line.c_str(), parent_left, parents_right, ctype);
+		constraint_type[current_id] = ctype;
 
 		++statistics.num_proof_lines;
 
@@ -186,10 +212,12 @@ bool ProofTranslator::translate() {
 		++statistics.num_core_proof_lines;
 
 		if (extract_core) {
-			core_writer << line << std::endl;
+			for (size_t i : sinks_of[current_id]) {
+				core_writers[i] << line << std::endl;
+			}
 		}
 
-		if (primary_type == 0) {
+		if (ctype == 1) {
 			negate(clause_database[current_id]);
 		}
 
@@ -198,10 +226,22 @@ bool ProofTranslator::translate() {
 		if (parent_left == 0) {
 			// input clause / initial term
 			record_axiom(current_id);
+			if (!have_formula) {
+				/* we don't have a separate formula file (probably because using QCIR)
+				 * so we have to log axioms. We do it like this:
+				 * 	 set last_use_of to 0, so that the constraint doesn't get deleted
+				 * 	 push the id to a list of axioms
+				 */
+				last_use_of[current_id] = 0;
+				axioms.push_back(current_id);
+			}
+
 		} else {
 			if (parents_right.empty()) {
 				// reduction step
-				translate_resolution_step(parent_left, 0, current_id);
+				if (translate_resolution_step(parent_left, 0, current_id) != 0) {
+					std::cout << "the failed step was a reduction step" << std::endl;
+				}
 			} else {
 				size_t i = 0;
 				int spare_QRP_ID_idx = 0;
@@ -214,7 +254,8 @@ bool ProofTranslator::translate() {
 					
 					clause_database[temporary_resolvent] = resolve(
 							clause_database[temporary_parent_left],
-							clause_database[parents_right[i]]
+							clause_database[parents_right[i]],
+							constraint_type[parents_right[i]]
 							);
 					
 					int result = translate_resolution_step(temporary_parent_left, parents_right[i], temporary_resolvent);
@@ -238,8 +279,14 @@ bool ProofTranslator::translate() {
 
 				int result = translate_resolution_step(temporary_parent_left, parents_right.back(), current_id);
 				// TODO: implement proper exception handling
-				if (result != 0)
+				if (result != 0) {
+					std::cout << "intermediate resolution failed" << std::endl;
+					std::cout << "learned clause id: " << current_id << std::endl;
+					std::cout << "parent_right: " << parents_right[i] <<
+						" (" << (i+2) << ordinal_suffix(i+2) <<
+						" in that derivation)" << std::endl;
 					return result;
+				}
 
 				if (temporary_parent_left != parent_left) {
 					forget(temporary_parent_left);
@@ -305,9 +352,14 @@ bool ProofTranslator::translate() {
 
 	cert.close_circuit(max_var);
 	rup.ofs.close();
-	core_writer.close();
+	for (ofstream& core_writer : core_writers)
+		core_writer.close();
 
-	combine(qdimacs, qrpfile + ".cert", qrpfile + ".cnf");
+	if (have_formula) {
+		combine(qdimacs, qrpfile + ".cert", qrpfile + ".cnf");
+	} else {
+		combine_internal(qrpfile + ".cert", qrpfile + ".cnf");
+	}
 
 	if (verbosity >= 1)
 		print_statistics();
@@ -350,7 +402,8 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 		// resolvent
 		pivot = check_resolution(clause_database[parent_left],
 								 clause_database[parent_right],
-								 clause_database[resolvent], merged_lits, reduced_lits);
+								 clause_database[resolvent], merged_lits, reduced_lits,
+								 constraint_type[parent_right]);
 		if (pivot == 0) {
 			std::cerr << "Failed resolution step with id " << resolvent << std::endl;
 			return -1;
@@ -471,7 +524,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 		copy_phases(parent_left, resolvent);
 		copy_phases(parent_right, resolvent);
 	} else {
-		check_reduction(clause_database[parent_left], clause_database[resolvent], reduced_lits);
+		check_reduction(clause_database[parent_left], clause_database[resolvent], reduced_lits, constraint_type[resolvent]);
 		copy_phases(parent_left, resolvent);
 	}
 
@@ -946,7 +999,20 @@ bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {
 
 	++statistics.num_core_axioms;
 
-	if (primary_type == 0) {
+	if (!have_formula) {
+		// can't compare with the matrix, but we should check for auxiliary Tseitin variables
+		// and record an axiom clause
+		get_grat_id[current_id] = ++num_cnf_clauses;
+		for (OldLit lit : clause_database[current_id]) {
+			OldVar var = abs(lit);
+			if (var > max_var) {
+				max_var = var;
+			}
+		}
+		return true;
+	}
+
+	if (primary_type == 1) {
 		// initial term, careful, it's already negated
 		rup.write_clause(clause_database[current_id]);
 		get_grat_id[current_id] = -rup.num_clauses;
@@ -971,12 +1037,14 @@ bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {
 				}
 				if (current_lit > clause.size()) {
 					// TODO: implement some incomplete heuristic in order to attempt to recover the satisfying assignment
-					std::cerr << "WARNING: Non-hitting initial term with the id " << current_id << std::endl;
-					std::cerr << "Unsatisfied clause no. " << clause_idx << " is:" << std::endl;
-					for (auto lit : clause) {
-						std::cerr << lit << " ";
+					if (verbosity > 1) {
+						std::cerr << "WARNING: Non-hitting initial term with the id " << current_id << std::endl;
+						std::cerr << "Unsatisfied clause no. " << clause_idx << " is:" << std::endl;
+						for (auto lit : clause) {
+							std::cerr << lit << " ";
+						}
+						std::cerr << std::endl;
 					}
-					std::cerr << std::endl;
 				}
 			}
 			current_clause += clause.size() + 1;
@@ -994,7 +1062,7 @@ bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {
 		QRP_ClauseID reduct_id = spare_QRP_IDs[0];
 
 		// resolving with an empty constraint is in fact reduction
-		clause_database[reduct_id] = resolve(clause_database[current_id], {});
+		clause_database[reduct_id] = resolve(clause_database[current_id], {}, constraint_type[current_id]);
 
 		translate_resolution_step(current_id, 0, reduct_id);
 
@@ -1066,12 +1134,19 @@ size_t ProofTranslator::split_by_depth(vector<OldVar>& clause, uint32_t depth) {
  * Implementation notes: the clauses c1, c2, resolvent are supposed to be sorted
  * and no translation into unordered_set takes place. 
  */
-int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2, vector<OldLit>& resolvent, vector<OldLit>& merged_lits, vector<OldLit>& reduced_lits) {
+int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2, vector<OldLit>& resolvent, vector<OldLit>& merged_lits, vector<OldLit>& reduced_lits, int primary_type) {
 	int32_t pivot = 0;
 	uint32_t max_primary_depth = 0;
+	int32_t rightmost_primary = 0;
 	for (int32_t lit : resolvent) {
 		int32_t var = abs(lit);
-		if (var_data[var].type == primary_type && var_data[var].depth > max_primary_depth) {
+		// TODO the if-condition is hacky: it assumes that unknown variables are primary
+		// relies on the assumption that unknown variables are auxiliary Tseitin variables
+		if (var_data.find(var) == var_data.end()) {
+			rightmost_primary = var;
+			max_primary_depth = UINT_MAX;
+		} else if (var_data[var].type == primary_type && var_data[var].depth > max_primary_depth) {
+			rightmost_primary = var;
 			max_primary_depth = var_data[var].depth;
 		}
 	}
@@ -1083,11 +1158,11 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 	SortedQueryOracle oracle_res(resolvent, compare_lits_weak);
 	for (int32_t lit : c1) {
 		int32_t var = abs(lit);
-		bool is_primary = (var_data[var].type == primary_type);
+		bool is_primary = (var_data.find(var) == var_data.end()) || (var_data[var].type == primary_type);
 		if (oracle_c2.has(-lit)) {
 			if (is_primary) {
 				if (pivot != 0 && lit != pivot) {
-					std::cerr << lit << ": duplicate pivot\n";
+					std::cerr << lit << ": duplicate pivot (already have " << pivot << ")\n";
 					return 0;
 				} else {
 					pivot = lit;
@@ -1114,7 +1189,7 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 				}
 			} else {
 				if (var_data[var].depth <= max_primary_depth) {
-					std::cerr << lit << ": non-tailing reduction in c1\n";
+					std::cerr << "non-tailing reduction in c1: " << lit << " reduced in the presence of " << rightmost_primary << " (claimed pivot " << pivot << ")\n";
 					return 0;
 				}
 				reduced_lits.push_back(lit);
@@ -1126,7 +1201,13 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 		std::cerr << "no pivot\n";
 		return 0;
 	}
-	if (min_merged_depth < var_data[abs(pivot)].depth) {
+
+	uint32_t pivot_depth = UINT_MAX;
+	if (var_data.find(abs(pivot)) != var_data.end()) {
+		pivot_depth = var_data[abs(pivot)].depth;
+	}
+
+	if (min_merged_depth < pivot_depth) {
 		std::cerr << "illegal merge" << std::endl;
 		std::cerr << "pivot: " << pivot << std::endl;
 		std::cerr << "illegally merged variables: ";
@@ -1151,14 +1232,21 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 			if (!oracle_res.has(lit)) {
 				//std::cerr << "resolvent does not have " << lit << std::endl;
 				int32_t var = abs(lit);
-				if (var_data[var].type == primary_type) {
+				/*if (var_data.find(var) == var_data.end()) {
+					std::cerr << std::endl << var << " is aux";
+				} else if (var_data[var].type == primary_type) { 
+					std::cerr << std::endl << var << " is pri";
+				} else {
+					std::cerr << std::endl << var << " is sec, but " << pivot << " is pivot";
+				}*/
+				if ((var_data.find(var) == var_data.end()) || (var_data[var].type == primary_type)) {
 					if (lit != -pivot) {
 						std::cerr << lit << ": primary reduction in c2\n";
 						return 0;
 					}
 				} else {
 					if (var_data[var].depth < max_primary_depth) {
-						std::cerr << lit << ": non-tailing reduction in c2\n";
+						std::cerr << std::endl << lit << ": non-tailing reduction in c2\n";
 						return 0;
 					}
 					reduced_lits.push_back(lit);
@@ -1179,7 +1267,7 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 
 // naively computes a sorted resolvent of c1 and c2, discarding all clashing primaries
 // and merging all clashing secondaries: the result needs to be checked for validity
-vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<OldLit>& c2) {
+vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<OldLit>& c2, int primary_type) {
 	vector<OldLit> resolvent;
 	size_t i1 = 0, i2 = 0;
 
@@ -1187,13 +1275,17 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
 	while (i1 < c1.size() || i2 < c2.size()) {
 		if (i1 == c1.size()) {
 			OldVar var = abs(c2[i2]);
-			if (var_data[var].type == primary_type && max_primary_depth < var_data[var].depth) {
+			if (var_data.find(var) == var_data.end()) {
+				max_primary_depth = UINT_MAX;
+			} else if (var_data[var].type == primary_type && max_primary_depth < var_data[var].depth) {
 				max_primary_depth = var_data[var].depth;
 			}
 			++i2;
 		} else if (i2 == c2.size()) {
 			OldVar var = abs(c1[i1]);
-			if (var_data[var].type == primary_type && max_primary_depth < var_data[var].depth) {
+			if (var_data.find(var) == var_data.end()) {
+				max_primary_depth = UINT_MAX;
+			} else if (var_data[var].type == primary_type && max_primary_depth < var_data[var].depth) {
 				max_primary_depth = var_data[var].depth;
 			}
 			++i1;
@@ -1204,7 +1296,9 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
 			OldVar var2 = abs(lit2);
 			if (var1 == var2) {
 				if (lit1 == lit2) {
-					if (var_data[var1].type == primary_type && max_primary_depth < var_data[var1].depth) {
+					if (var_data.find(var1) == var_data.end()) {
+						max_primary_depth = UINT_MAX;
+					} else if (var_data[var1].type == primary_type && max_primary_depth < var_data[var1].depth) {
 						max_primary_depth = var_data[var1].depth;
 					}
 					++i1;
@@ -1215,12 +1309,16 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
 					++i2;
 				}
 			} else if (var1 < var2) {
-				if (var_data[var1].type == primary_type && max_primary_depth < var_data[var1].depth) {
+				if (var_data.find(var1) == var_data.end()) {
+					max_primary_depth = UINT_MAX;
+				} else if (var_data[var1].type == primary_type && max_primary_depth < var_data[var1].depth) {
 					max_primary_depth = var_data[var1].depth;
 				}
 				++i1;
 			} else {
-				if (var_data[var2].type == primary_type && max_primary_depth < var_data[var2].depth) {
+				if (var_data.find(var2) == var_data.end()) {
+					max_primary_depth = UINT_MAX;
+				} else if (var_data[var2].type == primary_type && max_primary_depth < var_data[var2].depth) {
 					max_primary_depth = var_data[var2].depth;
 				}
 				++i2;
@@ -1234,13 +1332,13 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
 		if (i1 == c1.size()) {
 			OldLit lit = c2[i2];
 			OldVar var = abs(lit);
-			if (var_data[var].type == primary_type || var_data[var].depth < max_primary_depth)
+			if (var_data.find(var) == var_data.end() || var_data[var].type == primary_type || var_data[var].depth < max_primary_depth)
 				resolvent.push_back(lit);
 			++i2;
 		} else if (i2 == c2.size()) {
 			OldLit lit = c1[i1];
 			OldVar var = abs(lit);
-			if (var_data[var].type == primary_type || var_data[var].depth < max_primary_depth)
+			if (var_data.find(var) == var_data.end() || var_data[var].type == primary_type || var_data[var].depth < max_primary_depth)
 				resolvent.push_back(lit);
 			++i1;
 		} else {
@@ -1250,12 +1348,12 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
 			OldVar var2 = abs(lit2);
 			if (var1 == var2) {
 				if (lit1 == lit2) {
-					if (var_data[var1].type == primary_type || var_data[var1].depth < max_primary_depth)
+					if (var_data.find(var1) == var_data.end() || var_data[var1].type == primary_type || var_data[var1].depth < max_primary_depth)
 						resolvent.push_back(lit1);
 					++i1;
 					++i2;
 				} else {
-					if (var_data[var1].type == primary_type) {
+					if (var_data.find(var1) == var_data.end() || var_data[var1].type == primary_type) {
 						++i1;
 						++i2;
 					} else {
@@ -1276,11 +1374,11 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
 					}
 				}
 			} else if (var1 < var2) {
-				if (var_data[var1].type == primary_type || var_data[var1].depth < max_primary_depth)
+				if (var_data.find(var1) == var_data.end() || var_data[var1].type == primary_type || var_data[var1].depth < max_primary_depth)
 					resolvent.push_back(lit1);
 				++i1;
 			} else {
-				if (var_data[var2].type == primary_type || var_data[var2].depth < max_primary_depth)
+				if (var_data.find(var2) == var_data.end() || var_data[var2].type == primary_type || var_data[var2].depth < max_primary_depth)
 					resolvent.push_back(lit2);
 				++i2;
 			}
@@ -1300,7 +1398,7 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
  *	-1: reduction on non-tailing secondary literal
  *	-2: introduction of literal not from premise
  */
-int32_t ProofTranslator::check_reduction(vector<OldLit>& premise, vector<OldLit>& conclusion, vector<OldLit>& reduced_lits) {
+int32_t ProofTranslator::check_reduction(vector<OldLit>& premise, vector<OldLit>& conclusion, vector<OldLit>& reduced_lits, int primary_type) {
 	uint32_t max_primary_depth = 0;
 	for (int32_t lit : conclusion) {
 		int32_t var = abs(lit);

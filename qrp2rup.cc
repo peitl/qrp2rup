@@ -1,8 +1,6 @@
 #include <iostream>
 #include <fstream>
 //#include <iomanip>
-#include <cmath>
-#include <algorithm>
 
 #include <stdlib.h>
 #include <string.h>
@@ -77,25 +75,30 @@ int main(int argc, char** argv) {
 			std::cout << HELP_MESSAGE << std::endl;
 			exit(1);
         } else if (qdimacs.length() == 0) {
-            qdimacs = argv[i];
-        } else {
             qrpfile = argv[i];
+        } else {
+            qdimacs = argv[i];
         }
     }
 
 	if (qdimacs.length() == 0) {
-        std::cout << "qrp2rup ERROR: Please, specify a QDIMACS and optionally a proof file to work with." << std::endl;
-		exit(1);
+        //std::cout << "qrp2rup ERROR: Please, specify a QDIMACS and optionally a proof file to work with." << std::endl;
+        std::cout << "qrp2rup WARNING: No formula file, will check the proof for internal consistency" << std::endl;
+		//exit(1);
+	} else {
+		if (!std::ifstream(qdimacs).good()) {
+			std::cout << "qrp2rup ERROR: Unable to access file " << qdimacs << std::endl;
+			std::cout << HELP_MESSAGE << std::endl;
+			exit(1);
+		}
+		if (qrpfile.length() == 0) {
+			qrpfile = qdimacs + ".qrp";
+		}
 	}
-
-	if (!std::ifstream(qdimacs).good()) {
-		std::cout << "qrp2rup ERROR: Unable to access file " << qdimacs << std::endl;
-		std::cout << HELP_MESSAGE << std::endl;
-		exit(1);
-	}
-
+	
 	if (qrpfile.length() == 0) {
-		qrpfile = qdimacs + ".qrp";
+        std::cout << "qrp2rup ERROR: no proof given." << std::endl;
+		exit(1);
 	}
 	
 	if (!std::ifstream(qrpfile).good()) {

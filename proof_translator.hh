@@ -5,17 +5,12 @@
 #include <iomanip>
 #include <string.h>
 
-#include <string>
 #include <fstream>
-#include <sstream>
-#include <limits>
 
-#include <stack>
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
 #include <algorithm>
-#include <tuple>
 
 // STRUCTS AND CLASSES
 // --------------------------------------
@@ -37,14 +32,19 @@ public:
 	CNFCircuit cert;
 	ClauseWriter rup;
 	GRATManager gman;
-	ofstream core_writer;
+	vector<ofstream> core_writers;
 
 	string qrpfile;
 	string qdimacs;
+
+	bool have_formula = true;
 	
 	unordered_map<OldVar, qdata> var_data;
 	unordered_map<QRP_ClauseID, vector<OldVar>> clause_database;
+	vector<QRP_ClauseID> axioms; // when no formula is provided, record axioms here to be printed later
 	unordered_map<QRP_ClauseID, QRP_ClauseID> last_use_of;
+	unordered_map<QRP_ClauseID, vector<QRP_ClauseID>> sinks_of;
+	vector<bool> constraint_type;
 
 	//unordered_map<OldVar, vector<RFAO_node>> countermodel;
 	
@@ -82,6 +82,7 @@ public:
 	vector<OldVar> clause_tseitin_variables = {};
 
 	struct proof_stats {
+		uint64_t num_empty_constraints = 0;
 		uint64_t num_proof_lines = 0;
 		uint64_t num_core_proof_lines = 0;
 		uint64_t num_core_axioms = 0;
@@ -102,6 +103,7 @@ public:
 		std::cout << std::endl;
 		std::cout << "--- PROOF STATS ------------------"  << std::endl;
 		std::cout << std::endl;
+		std::cout << "Number of empty constraints:       " << statistics.num_empty_constraints              << std::endl;
 		std::cout << "Number of core proof lines:        " << statistics.num_core_proof_lines               <<
 			std::setprecision(1) << " (" << relative_core_size_percent << "% of the original "
 			<< statistics.num_proof_lines << " lines)"               << std::endl;
@@ -153,6 +155,7 @@ public:
 	unordered_map<OldVar, NewVar> countermodel_out_var;
 	GRAT_ClauseID conflict_clause;
 
+	uint32_t max_depth = 0;
 	NewVar max_var = 0;
 	inline NewVar get_fresh_variable() { return ++max_var; }
 	inline void discard_last_variable() { --max_var; }
@@ -179,28 +182,33 @@ public:
 
 	// returns a stream position at the and of the prefix (= beginning of the matrix)
 	std::streampos read_prefix(std::ifstream& qrp);
+	vector<std::string> prefix_lines; // record the prefix so that it can be printed into the individual cores
 
-	// parses the DAG structure of the proof into parents_of, returns the id of the empty clause
+	// TODO generalize to return the ids of general sinks, so that partial derivations can be verified
+	// parses the DAG structure of the proof into parents_of, returns the ids of empty constraints
 	QRP_ClauseID parse_DAG_structure_QRP(std::ifstream& qrp,
 			unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of);
 
-	QRP_ClauseID parse_DAG_structure_Qute(std::ifstream& qrp,
+	vector<QRP_ClauseID> parse_DAG_structure_Qute(std::ifstream& qrp,
 			unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of);
 
 	bool is_SAT_proof(string& result_line);
 
 	unordered_map<QRP_ClauseID, QRP_ClauseID> find_core(
-			QRP_ClauseID empty_constraint,
+			const vector<QRP_ClauseID> &empty_constraint,
 			unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of);
 
 	// reads the literals of a new proof line and the IDs of parent proof lines;
 	// returns a reference to the read clause
 	QRP_ClauseID read_proof_line(const char * line,
 			QRP_ClauseID& parent_left,
-			vector<QRP_ClauseID>& parents_right); 
+			vector<QRP_ClauseID>& parents_right,
+			bool &ctype); 
 
 	// combines the matrix of qdiamcs with certificate into combined
 	void combine(string qdimacs, string certificate, string combined);
+	// when no qdimacs given (such as when certifying QCIR) combine with internally discovered axioms
+	void combine_internal(string certificate, string combined);
 
 	// proof checking
 	
@@ -214,14 +222,15 @@ public:
 
 	size_t split_by_depth(vector<OldVar>& clause, uint32_t depth);
 
-	vector<OldLit> resolve(const vector<OldLit>& c1, const vector<OldLit>& c2);
+	vector<OldLit> resolve(const vector<OldLit>& c1, const vector<OldLit>& c2, int primary_type);
 
 	int32_t check_resolution(vector<OldLit>& c1, vector<OldLit>& c2, vector<OldLit>& resolvent,
 			vector<OldLit>& merged_lits,
-			vector<OldLit>& reduced_lits);
+			vector<OldLit>& reduced_lits,
+			int primary_type);
 
 	int32_t check_reduction(vector<OldLit>& premise, vector<OldLit>& conclusion,
-			vector<OldLit>& reduced_lits);
+			vector<OldLit>& reduced_lits, int primary_type);
 
 	void split_reduction_step(QRP_ClauseID id, vector<OldLit>& reduced_lits,
 			vector<OldLit>& reduced_simple,

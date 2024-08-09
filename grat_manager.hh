@@ -2,6 +2,7 @@
 #define _GRAT_MANAGER_H_
 
 #include "types.hh"
+#include <string>
 #include <vector>
 
 using std::vector;

@@ -1,20 +1,22 @@
 #include "proof_translator.hh"
 #include <iomanip>
+#include <stack>
 
 using std::ifstream;
 
 // skips all comments, then checks whether the input is a QRP, or a Qute-style proof
 bool ProofTranslator::skip_comments(std::ifstream& qrp) {
+	// TODO core-writing of comments is disabled at the moment, because the number of cores is unknown
 	string line;
 	while (qrp.peek() == 'c') {
 		std::getline(qrp, line);
-		if (extract_core)
-			core_writer << line << std::endl;
+		/*if (extract_core)
+			core_writer << line << std::endl;*/
 	}
 	if (qrp.peek() == 'p') {
 		std::getline(qrp, line);
-		if (extract_core)
-			core_writer << line << std::endl;
+		/*if (extract_core)
+			core_writer << line << std::endl;*/
 		// QRP
 		return true;
 	} else if (qrp.peek() == 'a' || qrp.peek() == 'e') {
@@ -50,12 +52,17 @@ std::streampos ProofTranslator::read_prefix(std::ifstream& qrp) {
 		if (qtype != last_qtype) {
 			last_qtype = qtype;
 			++last_qdepth;
+			if (last_qdepth > max_depth)
+				max_depth = last_qdepth;
 		}
 
 		OldVar var;
 		std::getline(qrp, line);
-		if (extract_core)
-			core_writer << line << std::endl;
+		// number of cores unknown, cannot write, but
+		// TODO write once the number of cores is known
+		if (extract_core) {
+			prefix_lines.push_back(line);
+		}
 		std::istringstream iss(line);
 		iss.ignore(2);
 
@@ -64,19 +71,20 @@ std::streampos ProofTranslator::read_prefix(std::ifstream& qrp) {
 				break;
 			if (var > max_var)
 				max_var = var;
-			var_data[var] = {last_qdepth, qtype == 'e'};
+			var_data[var] = {last_qdepth, qtype == 'a'};
 		}
 	}
 	return matrix_begin;
 }
 
-QRP_ClauseID ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp,
+vector<QRP_ClauseID> ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp,
 		unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of) {
 
 	string line;
-	QRP_ClauseID empty_constraint_id = 0;
+	//QRP_ClauseID empty_constraint_id = 0;
+	vector<QRP_ClauseID> empty_constraint_ids;
 	int empty_constraint_type = 0;
-	while (empty_constraint_id == 0 && std::getline(qrp, line)) {
+	while (std::getline(qrp, line)) {
 
 		char * tmp_line;
 
@@ -89,14 +97,15 @@ QRP_ClauseID ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp,
 		long int first_literal_in_constraint = strtol(tmp_line, &tmp_line, 10);
 		if (first_literal_in_constraint == 0) {
 			// empty clause
-			empty_constraint_id = id;
+			empty_constraint_ids.push_back(id);
 			empty_constraint_type = constraint_type;
 		} else {
 			tmp_line = strstr(tmp_line, " 0 ");
 			if (tmp_line == NULL) {
 				std::cerr << "Qute-proof syntax error: expected a 0 token (offending line shown below)" << std::endl;
 				std::cerr << line << std::endl;
-				return 0;
+				empty_constraint_ids.clear();
+				return empty_constraint_ids;
 			}
 			tmp_line += 3;
 		}
@@ -107,13 +116,13 @@ QRP_ClauseID ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qrp,
 		}
 	}
 
-	primary_type = (empty_constraint_type == 0);
+	primary_type = empty_constraint_type;
 
-	if (empty_constraint_id == 0) {
+	if (empty_constraint_ids.empty()) {
 		std::cerr << "Error: no empty constraint found" << std::endl;
 	}
 
-	return empty_constraint_id;
+	return empty_constraint_ids;
 }
 
 QRP_ClauseID ProofTranslator::parse_DAG_structure_QRP(std::ifstream& qrp,
@@ -164,30 +173,38 @@ bool ProofTranslator::is_SAT_proof(string& result_line) {
 	return false;
 }
 
+/* clears parents_of
+ * and writes to the member variable sinks_of the ids of empty constraints in whose proofs
+ * a given core constraint participates */
 unordered_map<QRP_ClauseID, QRP_ClauseID> ProofTranslator::find_core(
-		QRP_ClauseID empty_constraint_id,
+		const vector<QRP_ClauseID> &empty_constraint_ids,
 		unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of) {
 
 	unordered_map<QRP_ClauseID, QRP_ClauseID> last_use_of;
 
 	std::stack<QRP_ClauseID, vector<QRP_ClauseID>> core_clauses;
-	core_clauses.push(empty_constraint_id);
-	last_use_of[empty_constraint_id] = 0;
-	while (!core_clauses.empty()) {
-		QRP_ClauseID current_id = core_clauses.top();
-		core_clauses.pop();
-		auto pit = parents_of.find(current_id);
-		if (pit != parents_of.end()) {
-			for (auto parent: pit->second) {
-				if (parent) {
-					auto it = last_use_of.find(parent);
-					if (it != last_use_of.end()) {
-						if (current_id > it->second) {
-							it->second = current_id;
+	//for (QRP_ClauseID empty_constraint_id : empty_constraint_ids) {
+	for (size_t i = 0; i < empty_constraint_ids.size(); i++) {
+		QRP_ClauseID empty_constraint_id = empty_constraint_ids[i];
+		core_clauses.push(empty_constraint_id);
+		last_use_of[empty_constraint_id] = 0;
+		while (!core_clauses.empty()) {
+			QRP_ClauseID current_id = core_clauses.top();
+			core_clauses.pop();
+			sinks_of[current_id].push_back(i);
+			auto pit = parents_of.find(current_id);
+			if (pit != parents_of.end()) {
+				for (auto parent: pit->second) {
+					if (parent) {
+						auto it = last_use_of.find(parent);
+						if (it != last_use_of.end()) {
+							if (current_id > it->second) {
+								it->second = current_id;
+							}
+						} else {
+							last_use_of.insert({parent, current_id});
+							core_clauses.push(parent);
 						}
-					} else {
-						last_use_of.insert({parent, current_id});
-						core_clauses.push(parent);
 					}
 				}
 			}
@@ -203,6 +220,11 @@ vector<vector<OldLit>> ProofTranslator::read_qdimacs() {
 	vector<vector<OldLit>> matrix;
 	string line;
 	ifstream qbf(qdimacs);
+	if (!qbf.good()) {
+		// not loading anything
+		have_formula = false;
+		return matrix;
+	}
 
 	// discard everything that is not clauses
 	while (std::getline(qbf, line) && (line[0] == 'c' || line[0] == 'p' || line[0] == 'a' || line[0] == 'e')) {}
@@ -226,20 +248,30 @@ vector<vector<OldLit>> ProofTranslator::read_qdimacs() {
 
 QRP_ClauseID ProofTranslator::read_proof_line(const char * line,
 		QRP_ClauseID& parent_left,
-		vector<QRP_ClauseID>& parents_right) {
+		vector<QRP_ClauseID>& parents_right,
+		bool &ctype) {
 
 	char * tmp;
 	QRP_ClauseID id = strtoul(line, &tmp, 10);
 	clause_database[id] = {};
 
 	if (!proof_is_qrp) {
-		// skip Qute clause/term flag
-		strtoul(tmp, &tmp, 10);
+		// record Qute clause/term flag
+		ctype = strtoul(tmp, &tmp, 10);
 	}
 
 	OldLit lit;
 	while ((lit = strtol(tmp, &tmp, 10)) != 0) {
 		clause_database[id].push_back(lit);
+
+		// autodetect and save information about auxiliary variables
+		/* actually don't do it, as we want to be able to have the same
+		 * name for the two types of a Tseitin variable, and distinguish
+		 * based on which constraint it is in (automatically)
+		OldVar var = abs(lit);
+		if (var_data.find(var) == var_data.end()) {
+			var_data.insert({var, {max_depth + ctype + 1, ctype}});
+		}*/
 	}
 
 	parent_left = strtoul(tmp, &tmp, 10);
@@ -251,6 +283,38 @@ QRP_ClauseID ProofTranslator::read_proof_line(const char * line,
 		}
 	}
 	return id;
+}
+
+void ProofTranslator::combine_internal(string certificate, string combined) {
+	CNFCircuit comb(combined);
+	ifstream cert(certificate);
+	string line;
+	ClauseCNT num_clauses = 0;
+
+	do {
+		std::getline(cert, line);
+	} while (line[0] == 'c');
+
+	{
+		std::istringstream iss(line);
+		iss.ignore(6);
+		iss >> num_clauses;
+		iss >> num_clauses;
+	}
+
+	comb.ofs << "p cnf " << max_var << " " << axioms.size() + num_clauses << "\n";
+	for (QRP_ClauseID axiom_id : axioms) {
+		for (OldLit lit : clause_database[axiom_id]) {
+			comb.ofs << lit << " ";
+		}
+		comb.ofs << "0" << std::endl;
+	}
+	while (std::getline(cert, line)) {
+		comb.ofs << line << std::endl;
+	}
+
+	//comb.ofs.seekp(6);
+	//comb.ofs << std::setw(41) << std::left << std::to_string(max_var) + " " + std::to_string(axioms.size() + num_clauses) << "\n";
 }
 
 void ProofTranslator::combine(string qdimacs, string certificate, string combined) {
@@ -290,7 +354,7 @@ void ProofTranslator::combine(string qdimacs, string certificate, string combine
 	size_t tseitin_idx = 0;
 	do {
 		if (!std::all_of(line.begin(), line.end(), isspace)) {
-			if (primary_type == 0) {
+			if (primary_type == 1) {
 				std::istringstream iss(line);
 				int32_t lit;
 				while (iss >> lit) {
@@ -310,7 +374,7 @@ void ProofTranslator::combine(string qdimacs, string certificate, string combine
 		}
 	} while (std::getline(qbf, line));
 
-	if (primary_type == 0) {
+	if (primary_type == 1) {
 		// TODO: make this more elegant
 		//comb.write_clause(top_level_clause);
 		for (OldLit lit : top_level_clause) {
