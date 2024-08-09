@@ -181,6 +181,7 @@ unordered_map<QRP_ClauseID, QRP_ClauseID> ProofTranslator::find_core(
 		unordered_map<QRP_ClauseID, vector<QRP_ClauseID>>& parents_of) {
 
 	unordered_map<QRP_ClauseID, QRP_ClauseID> last_use_of;
+	unordered_set<QRP_ClauseID> visited;
 
 	std::stack<QRP_ClauseID, vector<QRP_ClauseID>> core_clauses;
 	//for (QRP_ClauseID empty_constraint_id : empty_constraint_ids) {
@@ -188,10 +189,12 @@ unordered_map<QRP_ClauseID, QRP_ClauseID> ProofTranslator::find_core(
 		QRP_ClauseID empty_constraint_id = empty_constraint_ids[i];
 		core_clauses.push(empty_constraint_id);
 		last_use_of[empty_constraint_id] = 0;
+		visited.clear();
 		while (!core_clauses.empty()) {
 			QRP_ClauseID current_id = core_clauses.top();
 			core_clauses.pop();
 			sinks_of[current_id].push_back(i);
+			visited.insert(current_id);
 			auto pit = parents_of.find(current_id);
 			if (pit != parents_of.end()) {
 				for (auto parent: pit->second) {
@@ -203,6 +206,8 @@ unordered_map<QRP_ClauseID, QRP_ClauseID> ProofTranslator::find_core(
 							}
 						} else {
 							last_use_of.insert({parent, current_id});
+						}
+						if (visited.find(parent) == visited.end()) {
 							core_clauses.push(parent);
 						}
 					}
