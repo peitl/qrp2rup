@@ -190,11 +190,11 @@ unordered_map<QRP_ClauseID, QRP_ClauseID> ProofTranslator::find_core(
 		core_clauses.push(empty_constraint_id);
 		last_use_of[empty_constraint_id] = 0;
 		visited.clear();
+		visited.insert(empty_constraint_id);
 		while (!core_clauses.empty()) {
 			QRP_ClauseID current_id = core_clauses.top();
 			core_clauses.pop();
 			sinks_of[current_id].push_back(i);
-			visited.insert(current_id);
 			auto pit = parents_of.find(current_id);
 			if (pit != parents_of.end()) {
 				for (auto parent: pit->second) {
@@ -209,8 +209,12 @@ unordered_map<QRP_ClauseID, QRP_ClauseID> ProofTranslator::find_core(
 						}
 						if (visited.find(parent) == visited.end()) {
 							core_clauses.push(parent);
+							visited.insert(parent);
 						}
 					}
+				} if (pit->second.empty()) {
+					// axiom
+					num_cnf_clauses++;
 				}
 			}
 		}

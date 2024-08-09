@@ -1001,8 +1001,8 @@ bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {
 
 	if (!have_formula) {
 		// can't compare with the matrix, but we should check for auxiliary Tseitin variables
-		// and record an axiom clause
-		get_grat_id[current_id] = ++num_cnf_clauses;
+		// and record a GRAT ID
+		get_grat_id[current_id] = statistics.num_core_axioms;
 		for (OldLit lit : clause_database[current_id]) {
 			OldVar var = abs(lit);
 			if (var > max_var) {
