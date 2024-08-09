@@ -8,7 +8,7 @@
  * but just to stay on the safe side, we have a separate type for newly created variables
  * and that is currently set to a 64-bit integer.
  *
- * Actually no, fuck that. */
+ * Actually, no. */
 
 typedef int32_t Var;
 typedef int32_t Lit;

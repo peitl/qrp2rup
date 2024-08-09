@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
         /*if (strcmp(argv[i], "-d") == 0) {
             ++i;
             if (i == argc) {
-                std::cerr << "Expected a positive integer to follow '-d'" << std::endl;
+                std::cout << "Expected a positive integer to follow '-d'" << std::endl;
                 return -1;
             }
             delinfo = strtoul(argv[i], nullptr, 10);
@@ -111,5 +111,12 @@ int main(int argc, char** argv) {
     //delinfo = 1;
 
 	ProofTranslator pt(qrpfile, qdimacs, verbosity, extract_core);
-	pt.translate();
+	if (pt.translate()) {
+		return 0;
+	} else {
+		remove((qrpfile + ".rup").c_str());
+		remove((qrpfile + ".grat").c_str());
+		remove((qrpfile + ".cert").c_str());
+		return 1;
+	}
 }
