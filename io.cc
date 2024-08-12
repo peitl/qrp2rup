@@ -102,8 +102,8 @@ vector<QRP_ClauseID> ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qr
 		} else {
 			tmp_line = strstr(tmp_line, " 0 ");
 			if (tmp_line == NULL) {
-				std::cerr << "Qute-proof syntax error: expected a 0 token (offending line shown below)" << std::endl;
-				std::cerr << line << std::endl;
+				std::cout << "Qute-proof syntax error: expected a 0 token (offending line shown below)" << std::endl;
+				std::cout << line << std::endl;
 				empty_constraint_ids.clear();
 				return empty_constraint_ids;
 			}
@@ -119,7 +119,7 @@ vector<QRP_ClauseID> ProofTranslator::parse_DAG_structure_Qute(std::ifstream& qr
 	primary_type = empty_constraint_type;
 
 	if (empty_constraint_ids.empty()) {
-		std::cerr << "Error: no empty constraint found" << std::endl;
+		std::cout << "Error: no empty constraint found" << std::endl;
 	}
 
 	return empty_constraint_ids;
@@ -144,8 +144,8 @@ QRP_ClauseID ProofTranslator::parse_DAG_structure_QRP(std::ifstream& qrp,
 		} else {
 			tmp_line = strstr(tmp_line, " 0 ");
 			if (tmp_line == NULL) {
-				std::cerr << "QRP syntax error: expected a 0 token (offending line shown below)" << std::endl;
-				std::cerr << line << std::endl;
+				std::cout << "QRP syntax error: expected a 0 token (offending line shown below)" << std::endl;
+				std::cout << line << std::endl;
 				return 0;
 			}
 			tmp_line += 3;
@@ -158,7 +158,7 @@ QRP_ClauseID ProofTranslator::parse_DAG_structure_QRP(std::ifstream& qrp,
 	}
 
 	if (empty_constraint_id == 0) {
-		std::cerr << "Error: no empty constraint found" << std::endl;
+		std::cout << "Error: no empty constraint found" << std::endl;
 	}
 
 	return empty_constraint_id;

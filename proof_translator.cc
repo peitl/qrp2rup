@@ -9,6 +9,8 @@ using std::ifstream;
 
 bool ProofTranslator::translate() {
 
+	clock_t start = clock();
+
 	ifstream qrp(qrpfile);
 
 	/*if (extract_core)
@@ -96,6 +98,7 @@ bool ProofTranslator::translate() {
 		std::cout << std::endl;
 	}
 
+	// used for intermediate learned constraints, every constraint must formally have an id
 	spare_QRP_IDs[0] = empty_constraint_id + 1;
 	spare_QRP_IDs[1] = empty_constraint_id + 2;
 
@@ -329,8 +332,8 @@ bool ProofTranslator::translate() {
 
 		if (verbosity >= 2) {
 			if (statistics.num_core_proof_lines >= threshold) {
-				std::cerr << "INFO: " << statistics.num_core_proof_lines << " core proof lines processed.";
-				std::cerr << " The GRAT proof buffer now has " << gman.grat_proof.size() << " entries." << std::endl;
+				std::cout << "INFO: " << statistics.num_core_proof_lines << " core proof lines processed.";
+				std::cout << " The GRAT proof buffer now has " << gman.grat_proof.size() << " entries." << std::endl;
 				size_t new_threshold = threshold + last_threshold;
 				last_threshold = threshold;
 				threshold = new_threshold;
@@ -371,6 +374,7 @@ bool ProofTranslator::translate() {
 		std::cout << "---  TIME STATS ------------------" << std::endl;
 		std::cout << std::endl;
 		std::cout << "Proof translated in " << std::fixed << std::showpoint << std::setprecision(2) << t << " seconds" << std::endl;
+		std::cout << "Total time: " << std::fixed << std::showpoint << std::setprecision(2) << ((double)clock() - start) / CLOCKS_PER_SEC << " seconds" << std::endl;
 		std::cout << std::endl;
 	}
 
@@ -405,7 +409,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 								 clause_database[resolvent], merged_lits, reduced_lits,
 								 constraint_type[parent_right]);
 		if (pivot == 0) {
-			std::cerr << "Failed resolution step with id " << resolvent << std::endl;
+			std::cout << "Failed resolution step with id " << resolvent << std::endl;
 			return -1;
 		}
 
@@ -1042,12 +1046,12 @@ bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {
 				if (current_lit > clause.size()) {
 					// TODO: implement some incomplete heuristic in order to attempt to recover the satisfying assignment
 					if (verbosity > 1) {
-						std::cerr << "WARNING: Non-hitting initial term with the id " << current_id << std::endl;
-						std::cerr << "Unsatisfied clause no. " << clause_idx << " is:" << std::endl;
+						std::cout << "WARNING: Non-hitting initial term with the id " << current_id << std::endl;
+						std::cout << "Unsatisfied clause no. " << clause_idx << " is:" << std::endl;
 						for (auto lit : clause) {
-							std::cerr << lit << " ";
+							std::cout << lit << " ";
 						}
-						std::cerr << std::endl;
+						std::cout << std::endl;
 					}
 				}
 			}
@@ -1092,7 +1096,7 @@ bool ProofTranslator::record_axiom(QRP_ClauseID current_id) {
 
 		if (last_orig_clause_seen > matrix.size()) {
 			// error, input clause is invalid
-			std::cerr << "ERROR: Input clause with the id " << current_id << " does not occur in the matrix" << std::endl;
+			std::cout << "ERROR: Input clause with the id " << current_id << " does not occur in the matrix" << std::endl;
 			return false;
 		}
 
@@ -1166,7 +1170,7 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 		if (oracle_c2.has(-lit)) {
 			if (is_primary) {
 				if (pivot != 0 && lit != pivot) {
-					std::cerr << lit << ": duplicate pivot (already have " << pivot << ")\n";
+					std::cout << lit << ": duplicate pivot (already have " << pivot << ")\n";
 					return 0;
 				} else {
 					pivot = lit;
@@ -1188,12 +1192,12 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 		if (!oracle_res.has(lit)) {
 			if (is_primary) {
 				if (lit != pivot) {
-					std::cerr << lit << ": primary reduction in c1\n";
+					std::cout << lit << ": primary reduction in c1\n";
 					return 0;
 				}
 			} else {
 				if (var_data[var].depth <= max_primary_depth) {
-					std::cerr << "non-tailing reduction in c1: " << lit << " reduced in the presence of " << rightmost_primary << " (claimed pivot " << pivot << ")\n";
+					std::cout << "non-tailing reduction in c1: " << lit << " reduced in the presence of " << rightmost_primary << " (claimed pivot " << pivot << ")\n";
 					return 0;
 				}
 				reduced_lits.push_back(lit);
@@ -1202,7 +1206,7 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 	}
 
 	if (pivot == 0) {
-		std::cerr << "no pivot\n";
+		std::cout << "no pivot\n";
 		return 0;
 	}
 
@@ -1212,29 +1216,29 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 	}
 
 	if (min_merged_depth < pivot_depth) {
-		std::cerr << "illegal merge" << std::endl;
-		std::cerr << "pivot: " << pivot << std::endl;
-		std::cerr << "illegally merged variables: ";
+		std::cout << "illegal merge" << std::endl;
+		std::cout << "pivot: " << pivot << std::endl;
+		std::cout << "illegally merged variables: ";
 		for (OldLit lit : merged_lits)
 			if (var_data[abs(lit)].depth < var_data[abs(pivot)].depth)
-				std::cerr << lit << " ";
-		std::cerr << std::endl;
+				std::cout << lit << " ";
+		std::cout << std::endl;
 		return 0;
 	}
 	//if (verbosity >= 3 && !merged_lits.empty())
-	//	std::cerr << "pivot for these merges: " << pivot << std::endl;
+	//	std::cout << "pivot for these merges: " << pivot << std::endl;
 
 	/* Since reduced_lits was populated in sorted order, we can use has_literal on it,
 	 * to determine if a given literal was already collected for reduction if it's
 	 * contained in both c1 and c2. */
 	SortedQueryOracle oracle_reduced(reduced_lits, compare_lits_weak);
 	oracle_res.rewind();
-	//print_clause(std::cerr, reduced_lits);
+	//print_clause(std::cout, reduced_lits);
 	for (int32_t lit: c2) {
 		if (!oracle_reduced.has(lit)) {
-			//std::cerr << "reduced_lits does not have " << lit << std::endl;
+			//std::cout << "reduced_lits does not have " << lit << std::endl;
 			if (!oracle_res.has(lit)) {
-				//std::cerr << "resolvent does not have " << lit << std::endl;
+				//std::cout << "resolvent does not have " << lit << std::endl;
 				int32_t var = abs(lit);
 				/*if (var_data.find(var) == var_data.end()) {
 					std::cerr << std::endl << var << " is aux";
@@ -1245,12 +1249,12 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 				}*/
 				if ((var_data.find(var) == var_data.end()) || (var_data[var].type == primary_type)) {
 					if (lit != -pivot) {
-						std::cerr << lit << ": primary reduction in c2\n";
+						std::cout << lit << ": primary reduction in c2\n";
 						return 0;
 					}
 				} else {
 					if (var_data[var].depth < max_primary_depth) {
-						std::cerr << std::endl << lit << ": non-tailing reduction in c2\n";
+						std::cout << std::endl << lit << ": non-tailing reduction in c2\n";
 						return 0;
 					}
 					reduced_lits.push_back(lit);
@@ -1262,7 +1266,7 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 	oracle_c2.rewind();
 	for (int32_t lit: resolvent) {
 		if (!oracle_c1.has(lit) && !oracle_c2.has(lit)) {
-			std::cerr << "introduction of literals into resolvent\n";
+			std::cout << "introduction of literals into resolvent\n";
 			return 0;
 		}
 	}
