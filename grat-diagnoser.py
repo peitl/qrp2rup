@@ -96,6 +96,7 @@ def diagnose(rup, grat):
     grat_head = 0
     conflict_reached = False
     bug = False
+    id_seen = set()
     while not bug and grat_head < len(grat):
         if grat[grat_head] == 1:
             grat_head += 1
@@ -113,6 +114,11 @@ def diagnose(rup, grat):
                 temporary_assignment.add(-lit)
             grat_head += 1
             current_id = grat[grat_head]
+            if current_id in id_seen:
+                print("Duplicate id %d at position %d" % (current_id, grat_head))
+                bug = True
+            else:
+                id_seen.add(current_id)
             grat_head += 1
             while grat[grat_head] != 0:
                 unit_literal = is_unit(grat[grat_head])
@@ -182,6 +188,6 @@ def main(cnf_filename, rup_filename, grat_filename):
 
 if __name__ == "__main__":
     if len(sys.argv) == 2:
-        main(sys.argv[1] + ".qrp.cnf", sys.argv[1] + ".qrp.rup", sys.argv[1] + ".qrp.grat")
+        main(sys.argv[1] + ".cnf", sys.argv[1] + ".rup", sys.argv[1] + ".grat")
     else:
         main(sys.argv[1], sys.argv[2], sys.argv[3]);

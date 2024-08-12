@@ -312,18 +312,44 @@ void ProofTranslator::combine_internal(string certificate, string combined) {
 	}
 
 	comb.ofs << "p cnf " << max_var << " " << axioms.size() + num_clauses << "\n";
+	//comb.ofs << "p cnf ____________________ ____________________\n";
 	for (QRP_ClauseID axiom_id : axioms) {
 		for (OldLit lit : clause_database[axiom_id]) {
 			comb.ofs << lit << " ";
 		}
 		comb.ofs << "0" << std::endl;
 	}
+	
+	// must filter out clauses which contain CONST_TRUE
+	/*vector<NewLit> lits;
+	ClauseCNT num_cert_clauses = 0;*/
 	while (std::getline(cert, line)) {
+		/*std::istringstream iss(line);
+		bool is_sat = false;
+		NewLit l;
+		lits.clear();
+		do {
+			iss >> l;
+			if (l == CONST_TRUE) {
+				is_sat = true;
+				break;
+			} else if (l != CONST_FALSE) {
+				lits.push_back(l);
+			}
+		} while (l != 0);
+		if (!is_sat) {
+			for (NewLit l : lits) {
+				comb.ofs << l << " ";
+			}
+			comb.ofs << std::endl;
+			num_cert_clauses++;
+		}*/
+
 		comb.ofs << line << std::endl;
 	}
 
 	//comb.ofs.seekp(6);
-	//comb.ofs << std::setw(41) << std::left << std::to_string(max_var) + " " + std::to_string(axioms.size() + num_clauses) << "\n";
+	//comb.ofs << std::setw(41) << std::left << std::to_string(max_var) + " " + std::to_string(axioms.size() + num_cert_clauses) << "\n";
 }
 
 void ProofTranslator::combine(string qdimacs, string certificate, string combined) {

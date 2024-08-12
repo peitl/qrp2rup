@@ -134,7 +134,7 @@ bool ProofTranslator::translate() {
 
 	// define an auxiliary variable that holds the value 1
 	//CONST_TRUE = get_fresh_variable();
-	CONST_TRUE = 1 << 30;
+	CONST_TRUE = INT_MAX;
 	CONST_FALSE = -CONST_TRUE;
 	//cert.and_gate(CONST_TRUE, {});
 	//std::cout << "CONST_TRUE = " << CONST_TRUE << std::endl;
@@ -467,11 +467,15 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 				
 				// if phase_left (phase_right) is non-trivial, we need to make a RUP-style case distinction
 				if (phase_left != CONST_TRUE) {
-					rup.write_clause<NewLit>({var_eflit, pivot, -eflit_left, phase_left});
-					gman.open_rup_lemma(-rup.num_clauses);
-					gman.unit(phase_def[{pivot, var_phase}] + 1);
+					gman.open_rup_lemma(-(rup.num_clauses+1)); // referencing a not yet written lemma
 					if (phase_left != CONST_FALSE) {
+						rup.write_clause<NewLit>({var_eflit, pivot, -eflit_left, phase_left});
+						gman.unit(phase_def[{pivot, var_phase}] + 1);
 						gman.unit(eflit_def[eflit_left] + 0);
+					} else {
+						rup.write_clause<NewLit>({var_eflit, pivot, -eflit_left});
+						gman.unit(phase_def[{pivot, var_phase}] + 0);
+						// eflit_left has no def, so nothing to prop
 					}
 					gman.close_rup_lemma(eflit_def[var_eflit] + 2);
 				}
@@ -481,11 +485,9 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 					gman.open_rup_lemma(-rup.num_clauses);
 					if (phase_left != CONST_TRUE) {
 						gman.unit(-(rup.num_clauses - 1));
-					}
-					gman.unit(phase_def[{pivot, var_phase}] + 0);
-					if (phase_left != CONST_TRUE) {
 						gman.unit(eflit_def[eflit_left] + 1);
 					}
+					gman.unit(phase_def[{pivot, var_phase}] + 0);
 					gman.close_rup_lemma(eflit_def[var_eflit] + 3);
 				}					
 
@@ -493,11 +495,15 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 
 				// shortcuts to falsify right parent
 				if (phase_right != CONST_TRUE) {
-					rup.write_clause<NewLit>({var_eflit, -pivot, -eflit_right, phase_right});
-					gman.open_rup_lemma(-rup.num_clauses);
-					gman.unit(phase_def[{-pivot, var_phase}] + 1);
+					gman.open_rup_lemma(-(rup.num_clauses+1)); // referencing a not yet written lemma
 					if (phase_right != CONST_FALSE) {
+						rup.write_clause<NewLit>({var_eflit, -pivot, -eflit_right, phase_right});
+						gman.unit(phase_def[{-pivot, var_phase}] + 1);
 						gman.unit(eflit_def[eflit_right] + 0);
+					} else {
+						rup.write_clause<NewLit>({var_eflit, -pivot, -eflit_right});
+						gman.unit(phase_def[{-pivot, var_phase}] + 0);
+						// eflit_right has no def so nothing to prop
 					}
 					gman.close_rup_lemma(eflit_def[var_eflit] + 2);
 				}
@@ -507,18 +513,16 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 					gman.open_rup_lemma(-rup.num_clauses);
 					if (phase_right != CONST_TRUE) {
 						gman.unit(-(rup.num_clauses - 1));
-					}
-					gman.unit(phase_def[{-pivot, var_phase}] + 0);
-					if (phase_right != CONST_TRUE) {
 						gman.unit(eflit_def[eflit_right] + 1);
 					}
+					gman.unit(phase_def[{-pivot, var_phase}] + 0);
 					gman.close_rup_lemma(eflit_def[var_eflit] + 3);
 				}
 
 				eflit_shortcut[{-pivot, var_eflit}] = rup.num_clauses;
 			}
 			if (verbosity >= 3)
-				std::cout << "Eflit of " << var << " in " << resolvent << " is " << var_eflit << std::endl;
+				std::cout << "Phase of " << var << " in " << resolvent << " is " << var_phase << std::endl;
 		}
 		// carry over phases of already merged literals that are not being merged now
 		copy_phases(parent_left, resolvent);
@@ -1490,13 +1494,54 @@ NewVar ProofTranslator::update_phase(OldLit pivot, NewVar phase_left, NewVar pha
 	// pivot is the literal as it appears in the left parent
 	// always phase_left != phase_right
 	NewVar phi = get_fresh_variable();
-	phase_def[{pivot, phi}] = num_cnf_clauses + cert.num_clauses + 1;
+	if (phase_left == CONST_TRUE) {
+		phase_def[{pivot, phi}] = num_cnf_clauses + cert.num_clauses + 1;
+		phase_def[{-pivot, phi}] = num_cnf_clauses + cert.num_clauses + 2;
+		cert.ofs <<  pivot << " " <<  phi << " 0" << std::endl;
+		if (phase_right == CONST_FALSE) {
+			cert.ofs << -pivot << " " << -phi << " 0" << std::endl;
+			cert.num_clauses += 2;
+		} else {
+			cert.ofs << -pivot << " " << -phase_right << " " <<  phi << " 0" << std::endl;
+			cert.ofs << -pivot << " " <<  phase_right << " " << -phi << " 0" << std::endl;
+			cert.num_clauses += 3;
+		}
+	} else if (phase_left == CONST_FALSE) {
+		phase_def[{pivot, phi}] = num_cnf_clauses + cert.num_clauses + 1;
+		phase_def[{-pivot, phi}] = num_cnf_clauses + cert.num_clauses + 2;
+		cert.ofs <<  pivot << " " << -phi << " 0" << std::endl;
+		if (phase_right == CONST_TRUE) {
+			cert.ofs << -pivot << " " <<  phi << " 0" << std::endl;
+			cert.num_clauses += 2;
+		} else {
+			cert.ofs << -pivot << " " << -phase_right << " " <<  phi << " 0" << std::endl;
+			cert.ofs << -pivot << " " <<  phase_right << " " << -phi << " 0" << std::endl;
+			cert.num_clauses += 3;
+		}
+	} else {
+		phase_def[{pivot, phi}] = num_cnf_clauses + cert.num_clauses + 1;
+		phase_def[{-pivot, phi}] = num_cnf_clauses + cert.num_clauses + 3;
+		cert.ofs <<  pivot << " " << -phase_left << " " <<  phi << " 0" << std::endl;
+		cert.ofs <<  pivot << " " <<  phase_left << " " << -phi << " 0" << std::endl;
+		if (phase_right == CONST_TRUE) {
+			cert.ofs << -pivot << " " <<  phi << " 0" << std::endl;
+			cert.num_clauses += 3;
+		} else if (phase_right == CONST_FALSE) {
+			cert.ofs << -pivot << " " << -phi << " 0" << std::endl;
+			cert.num_clauses += 3;
+		} else {
+			cert.ofs << -pivot << " " << -phase_right << " " <<  phi << " 0" << std::endl;
+			cert.ofs << -pivot << " " <<  phase_right << " " << -phi << " 0" << std::endl;
+			cert.num_clauses += 4;
+		}
+	}
+	/*phase_def[{pivot, phi}] = num_cnf_clauses + cert.num_clauses + 1;
 	phase_def[{-pivot, phi}] = num_cnf_clauses + cert.num_clauses + 3;
 	//cert.write_clause<NewLit>({ pivot, -phase_left ,  phi});
 	//cert.write_clause<NewLit>({ pivot,	phase_left , -phi});
 	//cert.write_clause<NewLit>({-pivot, -phase_right,  phi});
 	//cert.write_clause<NewLit>({-pivot,	phase_right, -phi});
-	cert.ite_gate(phi, pivot, phase_left, phase_right);
+	cert.ite_gate(phi, pivot, phase_left, phase_right);*/
 	phase_cache.insert({{pivot, phase_left, phase_right}, phi});
 	/* if (phase_left == -phase_right) {
 		phase_cache.insert({{-pivot, phase_left, phase_right}, -phi});
