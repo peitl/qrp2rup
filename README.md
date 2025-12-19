@@ -1,6 +1,6 @@
 # qrp2rup
 
-`qrp2rup is a proof checker and strategy extractor for long-distance Q-resolution.
+`qrp2rup` is a proof checker and strategy extractor for long-distance Q-resolution.
 
 ## Install
 
@@ -25,4 +25,3 @@ At the moment `qrp2rup`
 - always generates the DRUP+GRAT proof (cannot be skipped)
 - has limited capabilities for core extraction
 - has limited support for enumeration proofs
-- 
