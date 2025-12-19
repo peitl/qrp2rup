@@ -26,7 +26,7 @@ int increase_verbosity_from_param(char * param) {
 }
 
 const string HELP_MESSAGE =
-"USAGE: qrp2rup [-v[v[v]]] [-q] [--core] qdimacs [qrp]\n\
+"USAGE: qrp2rup [-v[v[v]]] [-q] [--core] qrp [qdimacs]\n\
 		\n\
 		-v       increases verbosity\n\
 		-q       turns off all output\n\
