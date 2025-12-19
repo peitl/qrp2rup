@@ -1,5 +1,5 @@
-#ifndef _CNF_CIRCUIT_H_
-#define _CNF_CIRCUIT_H_
+#ifndef _AIG_CIRCUIT_H_
+#define _AIG_CIRCUIT_H_
 
 #include "circuit.hh"
 #include <fstream>
@@ -9,14 +9,12 @@ using std::vector;
 using std::ofstream;
 using std::string;
 
-class CNFCircuit : public Circuit {
+class AIGCircuit : public Circuit {
 	public:
+	ClauseCNT num_gates; 
 	ofstream ofs;
 
-	CNFCircuit(const string& filename) : ofs(ofstream(filename)) {
-		// print a fake prefix to the cnf--later rewrite when values are known
-		ofs << "p cnf ____________________ ____________________\n";
-	};
+	AIGCircuit(const string& filename) : ofs(ofstream(filename)) {};
 
 	virtual void or_gate(NewVar output, vector<NewLit>::const_iterator begin,
 										vector<NewLit>::const_iterator end);
@@ -32,8 +30,8 @@ class CNFCircuit : public Circuit {
 	virtual void equiv_gate(NewVar output, OldVar input1, NewVar input2);
 	virtual void ite_gate(NewVar output, OldLit query, NewVar val_false, NewVar val_true);
 
-	virtual void bincls(NewLit a, NewLit b);
-	virtual void tercls(NewLit a, NewLit b, NewLit c);
+	virtual void bincls(NewLit a, NewLit b) {};
+	virtual void tercls(NewLit a, NewLit b, NewLit c) {};
 
 	virtual void close_circuit();
 	virtual void close_circuit(NewVar max_var);

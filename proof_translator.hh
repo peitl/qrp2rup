@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <iomanip>
+#include <iostream>
 #include <string.h>
 
 #include <fstream>
@@ -18,6 +19,7 @@
 #include "types.hh"
 #include "clause_writer.hh"
 #include "cnf_circuit.hh"
+#include "aig_circuit.hh"
 #include "grat_manager.hh"
 
 #include "defaults.hh"
@@ -29,7 +31,7 @@ using std::unordered_map;
 class ProofTranslator {
 public:
 	// TODO: change to proper polymorphism via Circuit*
-	CNFCircuit cert;
+	Circuit* cert;
 	ClauseWriter rup;
 	GRATManager gman;
 	vector<ofstream> core_writers;
@@ -160,15 +162,21 @@ public:
 	inline NewVar get_fresh_variable() { return ++max_var; }
 	inline void discard_last_variable() { --max_var; }
 
-	ProofTranslator(const string& qrpfile, const string& qdimacs, int verbosity, bool extract_core) :
-		cert(CNFCircuit(qrpfile + ".cert")),
+	ProofTranslator(const string& qrpfile, const string& qdimacs, int verbosity, bool extract_core, bool aig_strategy) :
 		rup(ClauseWriter(qrpfile + ".rup")),
 		gman(qrpfile + ".grat", GRAT_BUFFER_SIZE),
 		qrpfile(qrpfile),
 		qdimacs(qdimacs),
 		delinfo(true),
 		verbosity(verbosity),
-   		extract_core(extract_core)	{}
+   		extract_core(extract_core)	{
+
+		if (aig_strategy) {
+			cert = new AIGCircuit(qrpfile + ".cert");
+		} else {
+			cert = new CNFCircuit(qrpfile + ".cert");
+		}
+	}
 
 	vector<vector<OldLit>> read_qdimacs();
 

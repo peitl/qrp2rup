@@ -46,6 +46,7 @@ int main(int argc, char** argv) {
     //uint32_t delinfo = 0;
 	int verbosity = 0;
 	bool extract_core = false;
+	bool aig_strategy = false;
 
     for (int i = 1; i < argc; i++) {
         /*if (strcmp(argv[i], "-d") == 0) {
@@ -67,6 +68,8 @@ int main(int argc, char** argv) {
             verbosity = -1;
 		} else if (strcmp(argv[i], "--core") == 0) {
             extract_core = true;
+		} else if (strcmp(argv[i], "--aig-strategy") == 0 || strcmp(argv[i], "-a") == 0) {
+            aig_strategy = true;
 		} else if (strlen(argv[i]) == 0) {
 			std::cout << "qrp2rup WARNING: Skipping empty argument at possition " << i << std::endl;
 			continue;
@@ -74,7 +77,7 @@ int main(int argc, char** argv) {
 			std::cout << "qrp2rup ERROR: Unknown option " << string(argv[i]) << std::endl;
 			std::cout << HELP_MESSAGE << std::endl;
 			exit(1);
-        } else if (qdimacs.length() == 0) {
+        } else if (qrpfile.length() == 0) {
             qrpfile = argv[i];
         } else {
             qdimacs = argv[i];
@@ -110,7 +113,7 @@ int main(int argc, char** argv) {
 
     //delinfo = 1;
 
-	ProofTranslator pt(qrpfile, qdimacs, verbosity, extract_core);
+	ProofTranslator pt(qrpfile, qdimacs, verbosity, extract_core, aig_strategy);
 	if (pt.translate()) {
 		return 0;
 	} else {

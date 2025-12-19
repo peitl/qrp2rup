@@ -22,9 +22,6 @@ bool ProofTranslator::translate() {
 	// bool implicit_immediate_reductions = false;
 	// bool implicit_resolution_reductions = false;
 
-	// print a fake prefix to the cnf--later rewrite when values are known
-	cert.ofs << "p cnf ____________________ ____________________\n";
-
 	// read up to the preamble line, discard any comments and determine proof format
 	proof_is_qrp = skip_comments(qrp);
 
@@ -69,7 +66,7 @@ bool ProofTranslator::translate() {
 
 	if (empty_constraint_ids.empty()) {
 		std::cerr << "FAIL" << std::endl;
-		cert.ofs.close();
+		cert->close_circuit();
 		rup.ofs.close();
 		/*if (extract_core)
 			core_writer.close();*/
@@ -139,6 +136,8 @@ bool ProofTranslator::translate() {
 	//CONST_TRUE = get_fresh_variable();
 	CONST_TRUE = INT_MAX;
 	CONST_FALSE = -CONST_TRUE;
+	cert->CONST_TRUE = CONST_TRUE;
+	cert->CONST_FALSE = CONST_FALSE;
 	//cert.and_gate(CONST_TRUE, {});
 	//std::cout << "CONST_TRUE = " << CONST_TRUE << std::endl;
 
@@ -343,7 +342,7 @@ bool ProofTranslator::translate() {
 
 	gman.conflict_clause(conflict_clause);
 
-	gman.write_grat_proof(num_cnf_clauses + cert.num_clauses);
+	gman.write_grat_proof(num_cnf_clauses + cert->num_clauses);
 
 	if (verbosity >= 2) {
 		gman.display_grat_proof_human_readable();
@@ -353,7 +352,7 @@ bool ProofTranslator::translate() {
 	// TODO: implement different types of encoding (quadratic one-sided, multi-gates)
 	// now handled by the circuit class, legacy code is stored in circuit.hh 
 
-	cert.close_circuit(max_var);
+	cert->close_circuit(max_var);
 	rup.ofs.close();
 	for (ofstream& core_writer : core_writers)
 		core_writer.close();
@@ -565,10 +564,10 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 
 		// initialize all g-variables
 		NewVar g = get_fresh_variable();
-		cert.or_gate(g, shadcls);
+		cert->or_gate(g, shadcls);
 
 		// the current clause is at the end of the certificate at the moment
-		GRAT_ClauseID current_grat_id = cert.num_clauses + num_cnf_clauses;
+		GRAT_ClauseID current_grat_id = cert->num_clauses + num_cnf_clauses;
 		get_grat_id[resolvent] = current_grat_id;
 
 		if (shadcls.empty()) {
@@ -602,10 +601,10 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			NewVar last_aux = auxg.back();
 			auxg.push_back(get_fresh_variable());
 			// define next_g = last_g | eflit(var, phase(id, var))
-			cert.or_gate(auxg.back(), {last_aux, get_eflit(var, get_phase(resolvent, var))});
-			gvar_downwards_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
-			gvar_eflit_falsification_sequence.push_back(cert.num_clauses + num_cnf_clauses - 1);
-			gvar_definition_conflict_clause.push_back(cert.num_clauses + num_cnf_clauses);
+			cert->or_gate(auxg.back(), {last_aux, get_eflit(var, get_phase(resolvent, var))});
+			gvar_downwards_propagation_sequence.push_back(cert->num_clauses + num_cnf_clauses - 2);
+			gvar_eflit_falsification_sequence.push_back(cert->num_clauses + num_cnf_clauses - 1);
+			gvar_definition_conflict_clause.push_back(cert->num_clauses + num_cnf_clauses);
 			if (gvar_downwards_propagation_sequence.size() > 1) {
 				// the downwards shortcut clause from -g_k to -g, k > 1
 				rup.write_clause<NewLit>({auxg.back(), -g});
@@ -668,8 +667,8 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 				if (prop_pos[var].size() >= PROP_PACKING_THRESHOLD)
 					pack_prop_sequence(var, true);
 
-				cert.or_gate(out_var, {-g, new_out});
-				reduction_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
+				cert->or_gate(out_var, {-g, new_out});
+				reduction_propagation_sequence.push_back(cert->num_clauses + num_cnf_clauses - 2);
 				reduction_propagation_sequence.insert(reduction_propagation_sequence.end(),
 						prop_pos[var].rbegin(),
 						prop_pos[var].rend());
@@ -683,8 +682,8 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 				if (prop_neg[var].size() >= PROP_PACKING_THRESHOLD)
 					pack_prop_sequence(var, false);
 
-				cert.and_gate(out_var, {g, new_out});
-				reduction_propagation_sequence.push_back(cert.num_clauses + num_cnf_clauses - 2);
+				cert->and_gate(out_var, {g, new_out});
+				reduction_propagation_sequence.push_back(cert->num_clauses + num_cnf_clauses - 2);
 				reduction_propagation_sequence.insert(reduction_propagation_sequence.end(),
 						prop_neg[var].rbegin(),
 						prop_neg[var].rend());
@@ -792,14 +791,14 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			NewVar f2 = get_fresh_variable();
 			// TODO: cache the outcome of the following definitions based on the phase variable
 			// challenge: we need to know which clauses propagate f1 and f2 for the GRAT proof
-			cert.or_gate(f1, {g, -var_phase});
-			cert.or_gate(f2, {g, var_phase});
+			cert->or_gate(f1, {g, -var_phase});
+			cert->or_gate(f2, {g, var_phase});
 
 			// new_out := f1 & ( -f2 | ... )
 			NewVar new_out1 = get_fresh_variable();
 			NewVar new_out2 = get_fresh_variable();
-			cert.and_gate(out_var, {f1, new_out1});
-			cert.or_gate(new_out1, {-f2, new_out2});
+			cert->and_gate(out_var, {f1, new_out1});
+			cert->or_gate(new_out1, {-f2, new_out2});
 
 			//auto prop_clause = prop.find(var);
 			
@@ -816,8 +815,8 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			if (!gvar_downwards_shortcut_sequence.empty()) {
 				gman.unit(gvar_downwards_shortcut_sequence.back()); // g := false
 			}
-			gman.unit(cert.num_clauses + num_cnf_clauses - 9); // f1 := false
-			gman.unit(cert.num_clauses + num_cnf_clauses - 5); // out_var := false
+			gman.unit(cert->num_clauses + num_cnf_clauses - 9); // f1 := false
+			gman.unit(cert->num_clauses + num_cnf_clauses - 5); // out_var := false
 			gman.rev_unit_sequence(prop_neg[var]);
 			/*if (prop_clause != prop.end()) {
 				grat_proof.push_back(prop_clause->second[1]);
@@ -834,10 +833,10 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 				gman.unit(gvar_downwards_shortcut_sequence.back()); // g := false
 				gvar_downwards_shortcut_sequence.pop_back();
 			}
-			gman.unit(cert.num_clauses + num_cnf_clauses - 6);  // f2 := false
-			gman.unit(cert.num_clauses + num_cnf_clauses - 2);  // new_out1 := true
-			gman.unit(cert.num_clauses + num_cnf_clauses - 10); // f1 := true
-			gman.unit(cert.num_clauses + num_cnf_clauses - 3);  // out_var := true
+			gman.unit(cert->num_clauses + num_cnf_clauses - 6);  // f2 := false
+			gman.unit(cert->num_clauses + num_cnf_clauses - 2);  // new_out1 := true
+			gman.unit(cert->num_clauses + num_cnf_clauses - 10); // f1 := true
+			gman.unit(cert->num_clauses + num_cnf_clauses - 3);  // out_var := true
 			gman.rev_unit_sequence(prop_pos[var]);
 			/*if (prop_clause != prop.end()) {
 				grat_proof.push_back(prop_clause->second[0]);
@@ -876,7 +875,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 		 * appropriate definition. This is formalized below.
 		 *
 		 */
-		GRAT_ClauseID running_grat_id = cert.num_clauses + num_cnf_clauses - 3*reduced_simple.size() - 12*reduced_merged.size() + 2;
+		GRAT_ClauseID running_grat_id = cert->num_clauses + num_cnf_clauses - 3*reduced_simple.size() - 12*reduced_merged.size() + 2;
 		for (int32_t lit : reduced_simple) {
 			int32_t var = abs(lit);
 			GRAT_ClauseID delta = (lit > 0);
@@ -887,7 +886,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			running_grat_id += 3;
 		}
 
-		running_grat_id = cert.num_clauses + num_cnf_clauses - 12*reduced_merged.size();
+		running_grat_id = cert->num_clauses + num_cnf_clauses - 12*reduced_merged.size();
 
 		// update prop clauses for reduced merged literals
 		for (vector<OldVar>::reverse_iterator rit = reduced_merged.rbegin(); rit != reduced_merged.rend(); rit++) {
@@ -1499,44 +1498,44 @@ NewVar ProofTranslator::update_phase(OldLit pivot, NewVar phase_left, NewVar pha
 	// always phase_left != phase_right
 	NewVar phi = get_fresh_variable();
 	if (phase_left == CONST_TRUE) {
-		phase_def[{pivot, phi}] = num_cnf_clauses + cert.num_clauses + 1;
-		phase_def[{-pivot, phi}] = num_cnf_clauses + cert.num_clauses + 2;
-		cert.ofs <<  pivot << " " <<  phi << " 0" << std::endl;
+		phase_def[{pivot, phi}] = num_cnf_clauses + cert->num_clauses + 1;
+		phase_def[{-pivot, phi}] = num_cnf_clauses + cert->num_clauses + 2;
+		cert->bincls(pivot, phi);
 		if (phase_right == CONST_FALSE) {
-			cert.ofs << -pivot << " " << -phi << " 0" << std::endl;
-			cert.num_clauses += 2;
+			cert->bincls(-pivot, -phi);
+			cert->num_clauses += 2;
 		} else {
-			cert.ofs << -pivot << " " << -phase_right << " " <<  phi << " 0" << std::endl;
-			cert.ofs << -pivot << " " <<  phase_right << " " << -phi << " 0" << std::endl;
-			cert.num_clauses += 3;
+			cert->tercls(-pivot, -phase_right,  phi);
+			cert->tercls(-pivot,  phase_right, -phi);
+			cert->num_clauses += 3;
 		}
 	} else if (phase_left == CONST_FALSE) {
-		phase_def[{pivot, phi}] = num_cnf_clauses + cert.num_clauses + 1;
-		phase_def[{-pivot, phi}] = num_cnf_clauses + cert.num_clauses + 2;
-		cert.ofs <<  pivot << " " << -phi << " 0" << std::endl;
+		phase_def[{pivot, phi}] = num_cnf_clauses + cert->num_clauses + 1;
+		phase_def[{-pivot, phi}] = num_cnf_clauses + cert->num_clauses + 2;
+		cert->bincls(pivot, -phi);
 		if (phase_right == CONST_TRUE) {
-			cert.ofs << -pivot << " " <<  phi << " 0" << std::endl;
-			cert.num_clauses += 2;
+			cert->bincls(-pivot, phi);
+			cert->num_clauses += 2;
 		} else {
-			cert.ofs << -pivot << " " << -phase_right << " " <<  phi << " 0" << std::endl;
-			cert.ofs << -pivot << " " <<  phase_right << " " << -phi << " 0" << std::endl;
-			cert.num_clauses += 3;
+			cert->tercls(-pivot, -phase_right,  phi);
+			cert->tercls(-pivot,  phase_right, -phi);
+			cert->num_clauses += 3;
 		}
 	} else {
-		phase_def[{pivot, phi}] = num_cnf_clauses + cert.num_clauses + 1;
-		phase_def[{-pivot, phi}] = num_cnf_clauses + cert.num_clauses + 3;
-		cert.ofs <<  pivot << " " << -phase_left << " " <<  phi << " 0" << std::endl;
-		cert.ofs <<  pivot << " " <<  phase_left << " " << -phi << " 0" << std::endl;
+		phase_def[{pivot, phi}] = num_cnf_clauses + cert->num_clauses + 1;
+		phase_def[{-pivot, phi}] = num_cnf_clauses + cert->num_clauses + 3;
+		cert->tercls(pivot, -phase_left,  phi);
+		cert->tercls(pivot,  phase_left, -phi);
 		if (phase_right == CONST_TRUE) {
-			cert.ofs << -pivot << " " <<  phi << " 0" << std::endl;
-			cert.num_clauses += 3;
+			cert->bincls(-pivot, phi);
+			cert->num_clauses += 3;
 		} else if (phase_right == CONST_FALSE) {
-			cert.ofs << -pivot << " " << -phi << " 0" << std::endl;
-			cert.num_clauses += 3;
+			cert->bincls(-pivot, -phi);
+			cert->num_clauses += 3;
 		} else {
-			cert.ofs << -pivot << " " << -phase_right << " " <<  phi << " 0" << std::endl;
-			cert.ofs << -pivot << " " <<  phase_right << " " << -phi << " 0" << std::endl;
-			cert.num_clauses += 4;
+			cert->tercls(-pivot, -phase_right,  phi);
+			cert->tercls(-pivot,  phase_right, -phi);
+			cert->num_clauses += 4;
 		}
 	}
 	/*phase_def[{pivot, phi}] = num_cnf_clauses + cert.num_clauses + 1;
@@ -1555,8 +1554,8 @@ NewVar ProofTranslator::update_phase(OldLit pivot, NewVar phase_left, NewVar pha
 
 NewVar ProofTranslator::make_eflit(OldVar var, NewVar phase_var) {
 	int64_t new_eflit = get_fresh_variable();
-	eflit_def[new_eflit] = num_cnf_clauses + cert.num_clauses + 1;
-	cert.equiv_gate(new_eflit, var, phase_var);
+	eflit_def[new_eflit] = num_cnf_clauses + cert->num_clauses + 1;
+	cert->equiv_gate(new_eflit, var, phase_var);
 	//cert.write_clause<NewLit>({-new_eflit, -var,  phase_var});
 	//cert.write_clause<NewLit>({-new_eflit,	var, -phase_var});
 	//cert.write_clause<NewLit>({ new_eflit,	var,  phase_var});
