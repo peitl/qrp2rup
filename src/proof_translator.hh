@@ -33,6 +33,7 @@ public:
 	// TODO: change to proper polymorphism via Circuit*
 	Circuit* cert;
 	ClauseWriter rup;
+	ClauseWriter qrat;
 	GRATManager gman;
 	vector<ofstream> core_writers;
 
@@ -164,6 +165,7 @@ public:
 
 	ProofTranslator(const string& qrpfile, const string& qdimacs, int verbosity, bool extract_core, bool aig_strategy) :
 		rup(ClauseWriter(qrpfile + ".rup")),
+		qrat(ClauseWriter(qrpfile + ".qrat")),
 		gman(qrpfile + ".grat", GRAT_BUFFER_SIZE),
 		qrpfile(qrpfile),
 		qdimacs(qdimacs),

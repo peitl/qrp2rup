@@ -17,6 +17,7 @@ class ClauseWriter {
 	ClauseCNT num_clauses; // total number of clauses written by this writer
 
 	ClauseWriter(const string& filename) : ofs(ofstream(filename)), num_clauses(0) {}
+	template <typename T> std::ostream& operator<<(const T& t) {return ofs << t;};
 
 	template <typename T> void write_clause(const vector<T>& clause);
 

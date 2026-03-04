@@ -436,6 +436,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			} else if (ppit != phase_cache.end()) {
 				var_phase = ppit->second;
 			} else {
+				// QRAT note: update_phase emits QRAT proof
 				var_phase = update_phase(pivot, phase_left, phase_right);
 			}
 			phase.insert({{resolvent, var}, var_phase});
@@ -447,6 +448,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			if (vpit != eflit.end()) {
 				var_eflit = vpit->second;
 			} else {
+				// QRAT note: make_eflit emits QRAT proof
 				var_eflit = make_eflit(var, var_phase);
 				eflit.insert({{var, var_phase}, var_eflit});
 				// print E-clauses because effective literal was updated
@@ -468,15 +470,18 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 				
 				// TODO: rewrite sequences such as this one into vector.insert(end, initializer_list)
 				
+				// QRAT all of these RUP lemmas should just be copiable into QRAT
 				// if phase_left (phase_right) is non-trivial, we need to make a RUP-style case distinction
 				if (phase_left != CONST_TRUE) {
 					gman.open_rup_lemma(-(rup.num_clauses+1)); // referencing a not yet written lemma
 					if (phase_left != CONST_FALSE) {
 						rup.write_clause<NewLit>({var_eflit, pivot, -eflit_left, phase_left});
+						qrat.write_clause<NewLit>({var_eflit, pivot, -eflit_left, phase_left});
 						gman.unit(phase_def[{pivot, var_phase}] + 1);
 						gman.unit(eflit_def[eflit_left] + 0);
 					} else {
 						rup.write_clause<NewLit>({var_eflit, pivot, -eflit_left});
+						qrat.write_clause<NewLit>({var_eflit, pivot, -eflit_left});
 						gman.unit(phase_def[{pivot, var_phase}] + 0);
 						// eflit_left has no def, so nothing to prop
 					}
@@ -485,6 +490,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 
 				if (phase_left != CONST_FALSE) {
 					rup.write_clause<NewLit>({var_eflit, pivot, -eflit_left});
+					qrat.write_clause<NewLit>({var_eflit, pivot, -eflit_left});
 					gman.open_rup_lemma(-rup.num_clauses);
 					if (phase_left != CONST_TRUE) {
 						gman.unit(-(rup.num_clauses - 1));
@@ -501,10 +507,12 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 					gman.open_rup_lemma(-(rup.num_clauses+1)); // referencing a not yet written lemma
 					if (phase_right != CONST_FALSE) {
 						rup.write_clause<NewLit>({var_eflit, -pivot, -eflit_right, phase_right});
+						qrat.write_clause<NewLit>({var_eflit, -pivot, -eflit_right, phase_right});
 						gman.unit(phase_def[{-pivot, var_phase}] + 1);
 						gman.unit(eflit_def[eflit_right] + 0);
 					} else {
 						rup.write_clause<NewLit>({var_eflit, -pivot, -eflit_right});
+						qrat.write_clause<NewLit>({var_eflit, -pivot, -eflit_right});
 						gman.unit(phase_def[{-pivot, var_phase}] + 0);
 						// eflit_right has no def so nothing to prop
 					}
@@ -513,6 +521,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 
 				if (phase_right != CONST_FALSE) {
 					rup.write_clause<NewLit>({var_eflit, -pivot, -eflit_right});
+					qrat.write_clause<NewLit>({var_eflit, -pivot, -eflit_right});
 					gman.open_rup_lemma(-rup.num_clauses);
 					if (phase_right != CONST_TRUE) {
 						gman.unit(-(rup.num_clauses - 1));
@@ -538,6 +547,15 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 	split_reduction_step(resolvent, reduced_lits, reduced_simple, reduced_merged);
 	// TODO: avoid the computation of the shadow clause if not necessary
 	vector<NewVar> shadcls = shadow(resolvent);
+
+	// for QRAT, we need everything
+	vector<NewLit> qrat_clause = shadcls;
+	for (NewLit lit : reduced_simple) {
+		qrat_clause.push_back(lit);
+	}
+	for (NewLit lit : reduced_merged) {
+		qrat_clause.push_back(lit);
+	}
 
 	// compute the propagation sequence for newly merged literals
 	// the "left" ("right") sequence is what propagates when the left (right) pivot and the new merged literals are falsified
@@ -695,7 +713,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			countermodel_out_var[var] = new_out;
 		} 
 
-		// gvar = resolvent after reducing everything simple
+		// gvar = shadow resolvent after reducing everything simple
 		NewVar gvar = auxg.back();
 		auxg.pop_back();
 		gvar_downwards_shortcut_sequence.pop_back();
@@ -705,6 +723,11 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			// we have not reduced them yet (gvar = clause after reducing simple literals)
 
 			rup.write_clause<NewLit>({pivot, gvar});
+			//QRAT: instead of gvar we need the full shadow clause, including eflits, including reduced simple
+			//we will chop off reduced merged literals from this one by one, always copying all reduced simple.
+			//This way we will finally arrive at a reducible clause that will give the clause represented by g
+			//along the way we want to avoid the auxiliary g-something variables, including g itself
+			qrat << pivot << " "; qrat.write_clause(qrat_clause);
 
 			gman.open_rup_lemma(-rup.num_clauses);
 			gman.rev_unit_sequence(gvar_downwards_propagation_sequence);
@@ -722,6 +745,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			//grat_proof.push_back(get_grat_id[parent_left]);
 
 			rup.write_clause<NewLit>({gvar});
+			qrat.write_clause(qrat_clause);
 
 			gman.open_rup_lemma(-rup.num_clauses);
 			gman.unit(-(rup.num_clauses - 1));
@@ -737,6 +761,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 		} else {
 			// no merges in this resolultion step
 			rup.write_clause<NewLit>({gvar});
+			qrat.write_clause(qrat_clause);
 
 			gman.open_rup_lemma(-rup.num_clauses);
 			gman.rev_unit_sequence(gvar_downwards_propagation_sequence);
@@ -779,6 +804,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			NewVar var_phase = get_phase(resolvent, var);
 			gvar = auxg.back();
 			auxg.pop_back();
+			qrat_clause.pop_back();
 
 			NewVar out_var = var;
 			auto found = countermodel_out_var.find(var);
@@ -808,7 +834,16 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			if (prop_neg[var].size() >= PROP_PACKING_THRESHOLD)
 				pack_prop_sequence(var, false);
 
+			// QRAT TODO here we need to have the clause {gvar, var, -var_phase} because we don't have strategy
+			qrat_clause.push_back(var);
+			// var will later be reduced
+			// for it to be reducible we must start with the rightmost reduced_merged variable
 			rup.write_clause<NewLit>({gvar, -var_phase});
+
+			qrat_clause.push_back(-var_phase);
+			qrat.write_clause(qrat_clause);
+			qrat_clause.pop_back();
+
 
 			gman.open_rup_lemma(-rup.num_clauses);
 			//grat_proof.insert(grat_proof.end(), gvar_downwards_propagation_sequence.rbegin(), gvar_downwards_propagation_sequence.rend());
@@ -824,7 +859,17 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			gman.unit(eflit_def[get_eflit(var, var_phase)] + 1);
 			gman.close_rup_lemma(gvar_definition_conflict_clause.back());
 
+			// QRAT: here we need to have the clause {gvar, var} because we don't have strategy
 			rup.write_clause<NewLit>({gvar});
+
+			qrat.write_clause(qrat_clause);
+			qrat_clause.pop_back();
+
+			// QRAT: now universally reduce both previous clauses, so all is good
+			// provided that reduced_merged is traversed from right-to-left, i.e., it is sorted ascending by
+			// quantifier levels (this should be the case)
+
+			qrat << "u " << var << " "; qrat.write_clause(qrat_clause);
 
 			gman.open_rup_lemma(-rup.num_clauses);
 			gman.unit(-(rup.num_clauses - 1));
@@ -850,6 +895,12 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			
 			gvar_definition_conflict_clause.pop_back();
 
+		}
+
+		// QRAT: universally reduce reduced_simple one by one
+		for (vector<OldLit>::reverse_iterator rit = reduced_simple.rbegin(); rit != reduced_simple.rend(); rit++) {
+			qrat_clause.pop_back();
+			qrat << "u " << *rit << " "; qrat.write_clause(qrat_clause);
 		}
 		
 		/* add the clauses that short-circuit the RFAO array to the last partial circuit
@@ -931,12 +982,14 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 				// based on the pivot in order to propagate everything
 				if (!merged_lits.empty()) {
 					rup.ofs << pivot << " "; rup.write_clause(shadcls);
+					qrat << pivot << " "; qrat.write_clause(shadcls);
 
 					gman.open_rup_lemma(-rup.num_clauses);
 					gman.unit_sequence(merge_propagation_sequence_left);
 					gman.close_rup_lemma(get_grat_id[parent_left]);
 
 					rup.write_clause(shadcls);
+					qrat.write_clause(shadcls);
 
 					gman.open_rup_lemma(-rup.num_clauses);
 					gman.unit(-(rup.num_clauses - 1));
@@ -945,6 +998,7 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 
 				} else {
 					rup.write_clause(shadcls);
+					qrat.write_clause(shadcls);
 
 					gman.open_rup_lemma(-rup.num_clauses);
 					gman.unit(get_grat_id[parent_right]);
@@ -1497,44 +1551,71 @@ NewVar ProofTranslator::update_phase(OldLit pivot, NewVar phase_left, NewVar pha
 	// pivot is the literal as it appears in the left parent
 	// always phase_left != phase_right
 	NewVar phi = get_fresh_variable();
+	// calculate the correct dependencies for the new variable
+	vector<NewVar> deps {pivot};
+	if (phase_left != CONST_TRUE && phase_left != CONST_FALSE) {
+		deps.push_back(phase_left);
+	}
+	if (phase_right != CONST_TRUE && phase_right != CONST_FALSE) {
+		deps.push_back(phase_right);
+	}
+	qrat << "e " << phi << " ";
+	for (NewVar d : deps) {
+		qrat << d << " ";
+	}
+	qrat << " 0" << std::endl;
 	if (phase_left == CONST_TRUE) {
 		phase_def[{pivot, phi}] = num_cnf_clauses + cert->num_clauses + 1;
 		phase_def[{-pivot, phi}] = num_cnf_clauses + cert->num_clauses + 2;
 		cert->bincls(pivot, phi);
+		qrat.write_clause<NewVar>({phi, pivot});
 		if (phase_right == CONST_FALSE) {
 			cert->bincls(-pivot, -phi);
+			qrat.write_clause<NewVar>({-phi, -pivot});
 			cert->num_clauses += 2;
 		} else {
 			cert->tercls(-pivot, -phase_right,  phi);
+			qrat.write_clause<NewVar>({ phi, -pivot, -phase_right});
 			cert->tercls(-pivot,  phase_right, -phi);
+			qrat.write_clause<NewVar>({-phi, -pivot,  phase_right});
 			cert->num_clauses += 3;
 		}
 	} else if (phase_left == CONST_FALSE) {
 		phase_def[{pivot, phi}] = num_cnf_clauses + cert->num_clauses + 1;
 		phase_def[{-pivot, phi}] = num_cnf_clauses + cert->num_clauses + 2;
 		cert->bincls(pivot, -phi);
+		qrat.write_clause<NewVar>({-phi, pivot});
 		if (phase_right == CONST_TRUE) {
 			cert->bincls(-pivot, phi);
+			qrat.write_clause<NewVar>({phi, -pivot});
 			cert->num_clauses += 2;
 		} else {
 			cert->tercls(-pivot, -phase_right,  phi);
+			qrat.write_clause<NewVar>({ phi, -pivot, -phase_right});
 			cert->tercls(-pivot,  phase_right, -phi);
+			qrat.write_clause<NewVar>({-phi, -pivot,  phase_right});
 			cert->num_clauses += 3;
 		}
 	} else {
 		phase_def[{pivot, phi}] = num_cnf_clauses + cert->num_clauses + 1;
 		phase_def[{-pivot, phi}] = num_cnf_clauses + cert->num_clauses + 3;
 		cert->tercls(pivot, -phase_left,  phi);
+		qrat.write_clause<NewVar>({ phi,  pivot, -phase_left});
 		cert->tercls(pivot,  phase_left, -phi);
+		qrat.write_clause<NewVar>({-phi,  pivot,  phase_left});
 		if (phase_right == CONST_TRUE) {
 			cert->bincls(-pivot, phi);
+			qrat.write_clause<NewVar>({phi, -pivot});
 			cert->num_clauses += 3;
 		} else if (phase_right == CONST_FALSE) {
 			cert->bincls(-pivot, -phi);
+			qrat.write_clause<NewVar>({-phi, -pivot});
 			cert->num_clauses += 3;
 		} else {
 			cert->tercls(-pivot, -phase_right,  phi);
+			qrat.write_clause<NewVar>({ phi, -pivot, -phase_right});
 			cert->tercls(-pivot,  phase_right, -phi);
+			qrat.write_clause<NewVar>({-phi, -pivot,  phase_right});
 			cert->num_clauses += 4;
 		}
 	}
@@ -1553,9 +1634,14 @@ NewVar ProofTranslator::update_phase(OldLit pivot, NewVar phase_left, NewVar pha
 }
 
 NewVar ProofTranslator::make_eflit(OldVar var, NewVar phase_var) {
-	int64_t new_eflit = get_fresh_variable();
+	NewVar new_eflit = get_fresh_variable();
 	eflit_def[new_eflit] = num_cnf_clauses + cert->num_clauses + 1;
 	cert->equiv_gate(new_eflit, var, phase_var);
+	qrat << "e " << new_eflit << " " << var << " " << phase_var << " 0" << std::endl;
+	qrat.write_clause<NewLit>({-new_eflit, -var,  phase_var});
+	qrat.write_clause<NewLit>({-new_eflit,	var, -phase_var});
+	qrat.write_clause<NewLit>({ new_eflit,	var,  phase_var});
+	qrat.write_clause<NewLit>({ new_eflit, -var, -phase_var});
 	//cert.write_clause<NewLit>({-new_eflit, -var,  phase_var});
 	//cert.write_clause<NewLit>({-new_eflit,	var, -phase_var});
 	//cert.write_clause<NewLit>({ new_eflit,	var,  phase_var});
