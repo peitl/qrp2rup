@@ -554,7 +554,8 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 		qrat_clause.push_back(lit);
 	}
 	for (NewLit lit : reduced_merged) {
-		qrat_clause.push_back(lit);
+		// need to push eflits here
+		qrat_clause.push_back(get_eflit(lit, get_phase(resolvent, lit)));
 	}
 
 	// compute the propagation sequence for newly merged literals
@@ -834,15 +835,22 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			if (prop_neg[var].size() >= PROP_PACKING_THRESHOLD)
 				pack_prop_sequence(var, false);
 
-			// QRAT TODO here we need to have the clause {gvar, var, -var_phase} because we don't have strategy
-			qrat_clause.push_back(var);
 			// var will later be reduced
 			// for it to be reducible we must start with the rightmost reduced_merged variable
 			rup.write_clause<NewLit>({gvar, -var_phase});
 
+			// QRAT TODO here we need to have the clause {gvar, var, -var_phase} because we don't have strategy
 			qrat_clause.push_back(-var_phase);
+			qrat_clause.push_back(var);
 			qrat.write_clause(qrat_clause);
 			qrat_clause.pop_back();
+
+			// now explicitly reduce var in QRAT
+			// QRAT: universal reduction requires that
+			// reduced_merged is traversed from right-to-left, i.e., it is sorted ascending by
+			// quantifier levels (this should be the case)
+			qrat << "u " << var << " "; qrat.write_clause(qrat_clause); 
+			qrat_clause.pop_back(); // phase literal no longer needed in qrat_clause
 
 
 			gman.open_rup_lemma(-rup.num_clauses);
@@ -859,17 +867,19 @@ int ProofTranslator::translate_resolution_step(QRP_ClauseID parent_left,
 			gman.unit(eflit_def[get_eflit(var, var_phase)] + 1);
 			gman.close_rup_lemma(gvar_definition_conflict_clause.back());
 
-			// QRAT: here we need to have the clause {gvar, var} because we don't have strategy
 			rup.write_clause<NewLit>({gvar});
 
+			// QRAT: here we need to have the clause {gvar, -var} because we don't have strategy
+			// the conflicting phase literal is propagated from the previos clause
+			qrat_clause.push_back(-var);
 			qrat.write_clause(qrat_clause);
 			qrat_clause.pop_back();
 
-			// QRAT: now universally reduce both previous clauses, so all is good
-			// provided that reduced_merged is traversed from right-to-left, i.e., it is sorted ascending by
+			// QRAT: universal reduction requires that
+			// reduced_merged is traversed from right-to-left, i.e., it is sorted ascending by
 			// quantifier levels (this should be the case)
 
-			qrat << "u " << var << " "; qrat.write_clause(qrat_clause);
+			qrat << "u " << -var << " "; qrat.write_clause(qrat_clause);
 
 			gman.open_rup_lemma(-rup.num_clauses);
 			gman.unit(-(rup.num_clauses - 1));
@@ -1552,7 +1562,7 @@ NewVar ProofTranslator::update_phase(OldLit pivot, NewVar phase_left, NewVar pha
 	// always phase_left != phase_right
 	NewVar phi = get_fresh_variable();
 	// calculate the correct dependencies for the new variable
-	vector<NewVar> deps {pivot};
+	vector<NewVar> deps {abs(pivot)};
 	if (phase_left != CONST_TRUE && phase_left != CONST_FALSE) {
 		deps.push_back(phase_left);
 	}
