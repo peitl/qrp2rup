@@ -1260,7 +1260,7 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 				}
 			} else {
 				if (var_data[var].depth <= max_primary_depth) {
-					std::cout << "non-tailing reduction in c1: " << lit << " reduced in the presence of " << rightmost_primary << " (claimed pivot " << pivot << ")\n";
+					std::cout << "non-trailing reduction in c1: " << lit << " reduced in the presence of " << rightmost_primary << " (claimed pivot " << pivot << ")\n";
 					return 0;
 				}
 				reduced_lits.push_back(lit);
@@ -1317,7 +1317,7 @@ int32_t ProofTranslator::check_resolution(vector<OldLit>& c1, vector<OldLit>& c2
 					}
 				} else {
 					if (var_data[var].depth < max_primary_depth) {
-						std::cout << std::endl << lit << ": non-tailing reduction in c2\n";
+						std::cout << std::endl << lit << ": non-trailing reduction in c2\n";
 						return 0;
 					}
 					reduced_lits.push_back(lit);
@@ -1466,7 +1466,7 @@ vector<OldLit> ProofTranslator::resolve(const vector<OldLit>& c1, const vector<O
 /* Check that the given reduction step is sound, returns 1 on success, otherwise
  * the following error codes:
  *	 0: reduction on primary literal
- *	-1: reduction on non-tailing secondary literal
+ *	-1: reduction on non-trailing secondary literal
  *	-2: introduction of literal not from premise
  */
 int32_t ProofTranslator::check_reduction(vector<OldLit>& premise, vector<OldLit>& conclusion, vector<OldLit>& reduced_lits, int primary_type) {
